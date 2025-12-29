@@ -3,9 +3,14 @@ import {
   Table, Tag, Progress, Card, Typography, Collapse,
   InputNumber, Space, Button, Modal, Form, Input,
   DatePicker, message, List, Popover, Row, Col,
-  Statistic, Tabs, Badge, Avatar, Checkbox
+  Statistic, Tabs, Badge, Avatar, Checkbox, Pagination
 } from 'antd';
-import { PlusOutlined, DeleteOutlined, BuildOutlined, ClockCircleOutlined, CarryOutOutlined, SearchOutlined, HistoryOutlined, AlertOutlined, AppstoreOutlined, UserOutlined, LogoutOutlined, LockOutlined, EditOutlined, BellOutlined, CheckCircleOutlined, SendOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined, DeleteOutlined, BuildOutlined, ClockCircleOutlined,
+  CarryOutOutlined, SearchOutlined, HistoryOutlined, AlertOutlined, AppstoreOutlined,
+  UserOutlined, LogoutOutlined, LockOutlined, EditOutlined, BellOutlined, CheckCircleOutlined,
+  SendOutlined,
+} from '@ant-design/icons';
 import dayjs from 'dayjs';
 
 import { db, auth } from "./firebase";
@@ -15,6 +20,7 @@ import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebas
 const { Panel } = Collapse;
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
+
 
 // Đây là "linh kiện" Chuông thông báo đã được cách ly
 const NotificationIcon = React.memo(({ count, hasDanger }) => {
@@ -33,6 +39,15 @@ const NotificationIcon = React.memo(({ count, hasDanger }) => {
 });
 
 const App = () => {
+  // Thay dòng cũ bằng 2 dòng này
+
+  const [page1, setPage1] = useState(1);
+  const [page2, setPage2] = useState(1);
+  const [page3, setPage3] = useState(1);
+
+  const pageSize = 10;
+
+
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
@@ -48,17 +63,18 @@ const App = () => {
 
   const [realtimeNotis, setRealtimeNotis] = useState([]);
 
+
   useEffect(() => {
-  if (!user) return;
-  const notiRef = ref(db, 'notifications/');
-  onValue(notiRef, (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-      const list = Object.keys(data).map(k => ({...data[k], fbKey: k}));
-      setRealtimeNotis(list.reverse().slice(0, 20)); // Lấy 20 cái mới nhất
-    }
-  });
-}, [user]);
+    if (!user) return;
+    const notiRef = ref(db, 'notifications/');
+    onValue(notiRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const list = Object.keys(data).map(k => ({ ...data[k], fbKey: k }));
+        setRealtimeNotis(list.reverse().slice(0, 20)); // Lấy 20 cái mới nhất
+      }
+    });
+  }, [user]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -82,7 +98,7 @@ const App = () => {
     });
   }, [user]);
   // Thay thế toàn bộ useState và useEffect của notifications bằng cục này:
-const notifications = useMemo(() => {
+  const notifications = useMemo(() => {
     if (orders.length === 0) return realtimeNotis; // Nếu chưa có đơn thì hiện thông báo từ cán bộ
 
     const homNay = dayjs().startOf('day');
@@ -132,7 +148,7 @@ const notifications = useMemo(() => {
     // Ưu tiên: Tin báo trễ (danger) -> Tin cán bộ cập nhật (realtimeNotis) -> Tin sắp đến hạn
     return [...thongBaoTre, ...realtimeNotis, ...sapDenHan];
 
-  }, [orders, realtimeNotis]); 
+  }, [orders, realtimeNotis]);
 
   const handleLogin = async (values) => {
     try {
@@ -149,7 +165,6 @@ const notifications = useMemo(() => {
     const daDongGoi = Number(order.soLuongDongGoi) || 0;
     return Math.min(100, Math.round((daDongGoi / tongBo) * 100));
   };
-
 
 
 
@@ -170,17 +185,37 @@ const notifications = useMemo(() => {
     });
   };
 
-const handleUpdateRecord = (fbKey, detailKey, to, value) => {
+  const deleteNoti = (item) => {
+    if (item.fbKey) {
+      // Nếu là thông báo từ Firebase (do cán bộ cập nhật)
+      remove(ref(db, `notifications/${item.fbKey}`))
+        .then(() => message.success("Đã xóa thông báo"));
+    } else {
+      // Nếu là thông báo hệ thống (tự tính toán trễ hạn)
+      message.info("Đây là thông báo hệ thống, sẽ tự mất khi làm xong hàng!");
+    }
+  };
+
+  const handleUpdateRecord = (fbKey, detailKey, to, value) => {
     const val = parseInt(value) || 0;
     const order = orders.find(o => o.fbKey === fbKey);
     if (!order) return;
 
-    const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'];
-    const currentIndex = steps.indexOf(to);
     const item = order.chiTiet.find(i => i.key === detailKey);
     if (!item) return;
 
-    // Giữ nguyên logic kiểm tra tiến độ cũ của đại ca
+    // --- BƯỚC QUAN TRỌNG: Lấy số lượng hiện tại trong máy để so sánh ---
+    const hienTai = item.tienDo?.[to] || 0;
+
+    // Nếu số mới gõ giống hệt số cũ thì thoát luôn, không làm gì cả
+    if (val === hienTai) {
+      return;
+    }
+
+    // --- Tiếp tục các logic kiểm tra tổ trước/sau của đại ca ---
+    const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'];
+    const currentIndex = steps.indexOf(to);
+
     if (currentIndex > 0) {
       const prevStep = steps[currentIndex - 1];
       const prevVal = item.tienDo?.[prevStep] || 0;
@@ -193,15 +228,9 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
       }
     }
 
-    if (val > item.can) {
-      message.warning(`Lưu ý: Số lượng ${to.toUpperCase()} đang vượt quá số lượng cần (${item.can})`);
-    }
-
+    // --- Thực hiện cập nhật vì số lượng ĐÃ THAY ĐỔI ---
     const newChiTiet = order.chiTiet.map(it => {
       if (it.key === detailKey) {
-        const hienTai = it.tienDo?.[to] || 0;
-        if (val === hienTai) return it;
-
         const deadlineStep = it.deadlines?.[to];
         let soNgayTreLuuLai = 0;
         if (deadlineStep && val < it.can) {
@@ -217,7 +246,7 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
           ngay: dayjs().format('DD/MM HH:mm'),
           to: to.toUpperCase(),
           sl: val,
-          chenhLech: val - hienTai,
+          chenhLech: val - hienTai, // Tính chênh lệch thật sự
           userEmail: user?.email || 'Ẩn danh',
           tre: soNgayTreLuuLai
         };
@@ -231,15 +260,15 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
       return it;
     });
 
-    // Cập nhật Database và đẩy thông báo cho Chuông
+    // Chỉ khi qua được bước kiểm tra (val !== hienTai) thì mới chạy lệnh này
     update(ref(db, `orders/${fbKey}`), { chiTiet: newChiTiet })
       .then(() => {
         message.success(`Đã cập nhật tổ ${to.toUpperCase()}`);
 
-        // --- ĐOẠN CODE MỚI ĐỂ ĐẨY THÔNG BÁO LÊN CHUÔNG ---
+        // Đẩy thông báo chuông (Chỉ chạy khi có thay đổi thực sự)
         const notiRef = ref(db, 'notifications/');
         const canBo = user?.email ? user.email.split('@')[0].toUpperCase() : 'ẨN DANH';
-        
+
         push(notiRef, {
           id: Date.now(),
           title: 'CẬP NHẬT SẢN XUẤT',
@@ -248,7 +277,6 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
           type: 'info',
           isRead: false
         });
-        // ----------------------------------------------
       })
       .catch(() => message.error("Lỗi kết nối Database!"));
   };
@@ -433,18 +461,18 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
       }
     })),
   ];
-  const renderOrderList = (data, isDeliveredTab = false) => {
-
+  const renderOrderList = (data, isDeliveredTab = false, page, setPage) => {
     const collapseItems = data.map(order => {
       const progress = calculateOrderProgress(order);
       const isDone = (order.soLuongDongGoi || 0) >= (order.tongSoBo || 1);
       const isPackingOverdue = order.deadlineDongGoi && !isDone && dayjs().isAfter(dayjs(order.deadlineDongGoi), 'day');
-      // Kiểm tra xem tất cả linh kiện đã làm đủ số lượng 'can' chưa (trừ những bước đã Skip)
+
+      // Kiểm tra đủ linh kiện
       const isDuLinhKien = order.chiTiet?.every(item => {
         const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son'];
         return steps.every(step => {
-          if (item.skipSteps?.includes(step)) return true; // Bước nào skip thì bỏ qua
-          return (item.tienDo?.[step] || 0) >= item.can; // Bước nào làm rồi thì phải đủ số lượng
+          if (item.skipSteps?.includes(step)) return true;
+          return (item.tienDo?.[step] || 0) >= item.can;
         });
       });
 
@@ -474,46 +502,51 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
             <Button type="text" danger icon={<DeleteOutlined />} onClick={() => Modal.confirm({ title: 'Xoá đơn này?', onOk: () => remove(ref(db, `orders/${order.fbKey}`)) })} />
           </Space>
         ),
-        // Toàn bộ nội dung bên trong Panel cũ giờ nằm ở đây:
         children: (
           <>
-            <Table columns={columns(order.fbKey)} dataSource={order.chiTiet} pagination={false} bordered scroll={{ x: 1000 }} size="middle" />
-            <div style={{ marginTop: 15, padding: '15px', background: order.daGiao ? '#f5f5f5' : (isPackingOverdue ? '#fff1f0' : '#f6ffed'), borderRadius: '8px', border: `1px solid ${order.daGiao ? '#d9d9d9' : (isPackingOverdue ? '#ffa39e' : '#b7eb8f')}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+            <Table
+              columns={columns(order.fbKey)}
+              dataSource={order.chiTiet}
+              pagination={false}
+              bordered
+              scroll={{ x: 1000 }}
+              size="middle"
+            />
+            <div style={{
+              marginTop: 15,
+              padding: '15px',
+              background: order.daGiao ? '#f5f5f5' : (isPackingOverdue ? '#fff1f0' : '#f6ffed'),
+              borderRadius: '8px',
+              border: `1px solid ${order.daGiao ? '#d9d9d9' : (isPackingOverdue ? '#ffa39e' : '#b7eb8f')}`,
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}>
               <Space size="large">
                 <Text strong><CarryOutOutlined /> ĐÓNG GÓI XONG (BỘ):</Text>
                 <div style={{ textAlign: 'center' }}>
                   <InputNumber
                     min={0}
                     size="large"
-                    // LOGIC MỚI: Khóa ô nếu chưa đủ linh kiện hoặc đã giao hàng
-                    disabled={order.daGiao || !isDuLinhKien}
-                    // LOGIC MỚI: Hiện màu cảnh báo vàng nếu chưa đủ linh kiện
-                    status={!isDuLinhKien ? "warning" : (isPackingOverdue ? "error" : "")}
+                    style={{ width: 120 }}
                     value={order.soLuongDongGoi || 0}
-                    onChange={(val) => {
-                      // Cập nhật tạm thời để người dùng thấy số thay đổi (nếu cần)
-                    }}
+                    disabled={order.daGiao || !isDuLinhKien}
+                    status={!isDuLinhKien ? "warning" : (isPackingOverdue ? "error" : "")}
                     onBlur={(e) => {
                       const newVal = Number(e.target.value) || 0;
                       if (newVal !== order.soLuongDongGoi) {
                         update(ref(db, `orders/${order.fbKey}`), { soLuongDongGoi: newVal });
-                        message.success("Đã cập nhật số lượng đóng gói bộ!");
+                        message.success("Đã cập nhật số lượng đóng gói!");
                       }
                     }}
-                    style={{ width: 120 }}
                   />
-
-                  {/* HIỆN THÔNG BÁO NHẮC NHỞ */}
                   {!isDuLinhKien && !order.daGiao && (
-                    <div style={{ fontSize: '10px', color: '#faad14', fontWeight: 'bold', marginTop: '4px' }}>
-                      ⚠️ CHƯA ĐỦ LINH KIỆN
-                    </div>
+                    <div style={{ fontSize: '10px', color: '#faad14', fontWeight: 'bold', marginTop: '4px' }}>⚠️ CHƯA ĐỦ LINH KIỆN</div>
                   )}
-
                   {order.deadlineDongGoi && (
-                    <div style={{ fontSize: '11px', color: isPackingOverdue ? 'red' : '#8c8c8c', fontWeight: 'bold' }}>
-                      Hạn xong: {dayjs(order.deadlineDongGoi).format('DD/MM')}
-                    </div>
+                    <div style={{ fontSize: '11px', color: isPackingOverdue ? 'red' : '#8c8c8c', fontWeight: 'bold' }}>Hạn xong: {dayjs(order.deadlineDongGoi).format('DD/MM')}</div>
                   )}
                 </div>
                 <Text type="secondary">/ Tổng bộ cần: <b style={{ color: '#f5222d', fontSize: '16px' }}>{order.tongSoBo}</b></Text>
@@ -524,7 +557,13 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
                   <Progress percent={progress} status={order.daGiao ? "normal" : "active"} strokeColor={order.daGiao ? "#8c8c8c" : "#52c41a"} />
                 </div>
                 {progress >= 100 && !order.daGiao && (
-                  <Button type="primary" size="large" icon={<SendOutlined />} style={{ background: '#52c41a', borderColor: '#52c41a' }} onClick={() => handleDeliverOrder(order.fbKey)}>
+                  <Button
+                    type="primary"
+                    size="large"
+                    icon={<SendOutlined />}
+                    style={{ background: '#52c41a', borderColor: '#52c41a' }}
+                    onClick={() => handleDeliverOrder(order.fbKey)}
+                  >
                     HOÀN TẤT & GIAO HÀNG
                   </Button>
                 )}
@@ -537,13 +576,34 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
       };
     });
 
+    // Tính toán phân trang dựa trên page được truyền vào
+    const startIndex = (page - 1) * pageSize;
+    const paginatedItems = collapseItems.slice(startIndex, startIndex + pageSize);
+
     return (
-      <Collapse
-        accordion
-        ghost
-        expandIconPlacement="end"
-        items={collapseItems} // <--- TRUYỀN ITEMS VÀO ĐÂY
-      />
+      <>
+        <Collapse
+          accordion
+          ghost
+          expandIconPlacement="end"
+          items={paginatedItems}
+        />
+
+        {collapseItems.length > pageSize && (
+          <div style={{ textAlign: 'center', marginTop: '20px', paddingBottom: '30px' }}>
+            <Pagination
+              current={page}
+              pageSize={pageSize}
+              total={collapseItems.length}
+              showSizeChanger={false}
+              onChange={(p) => {
+                setPage(p);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            />
+          </div>
+        )}
+      </>
     );
   };
 
@@ -668,17 +728,28 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
                 trigger="click"
                 content={
                   <div style={{ width: 320, maxHeight: 400, overflowY: 'auto' }}>
-                    <div style={{ padding: '8px 12px', borderBottom: '1px solid #f0f0f0', fontWeight: 'bold' }}>
-                      THÔNG BÁO ({notifications.length})
+                    <div style={{
+                      padding: '8px 12px',
+                      borderBottom: '1px solid #f0f0f0',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      background: '#fafafa'
+                    }}>
+                      <span>THÔNG BÁO ({notifications.length})</span>
+                      {notifications.some(n => n.fbKey) && (
+                        <Button type="link" size="small" danger onClick={() => remove(ref(db, 'notifications/'))}>Xóa hết</Button>
+                      )}
                     </div>
 
                     {notifications.length === 0 ? (
-                      <div style={{ padding: '20px', textAlign: 'center', color: '#8c8c8c' }}>
-                        Không có thông báo mới
-                      </div>
+                      <div style={{ padding: '20px', textAlign: 'center', color: '#8c8c8c' }}>Không có thông báo mới</div>
                     ) : (
                       notifications.map((item) => {
                         const isOverdue = item.type === 'danger';
+                        const isSystemNoti = !item.fbKey; // Kiểm tra tin hệ thống
+
                         return (
                           <div
                             key={item.id}
@@ -688,6 +759,7 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
                               borderBottom: '1px solid #f0f0f0',
                               background: isOverdue ? '#fff1f0' : '#fffbe6',
                               transition: 'background 0.3s',
+                              position: 'relative',
                               cursor: 'default'
                             }}
                           >
@@ -698,12 +770,8 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
                                 style={{ backgroundColor: isOverdue ? '#cf1322' : '#faad14' }}
                               />
                             </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{
-                                fontWeight: 'bold',
-                                fontSize: '14px',
-                                color: isOverdue ? '#cf1322' : '#d48806'
-                              }}>
+                            <div style={{ flex: 1, paddingRight: '20px' }}>
+                              <div style={{ fontWeight: 'bold', fontSize: '14px', color: isOverdue ? '#cf1322' : '#d48806' }}>
                                 {isOverdue && '⚠️ '}{item.title}
                               </div>
                               <div style={{ fontSize: '13px', color: '#434343', marginTop: 4 }}>
@@ -713,6 +781,26 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
                                 {item.time}
                               </Tag>
                             </div>
+
+                            {/* CHỈ HIỆN NÚT X NẾU KHÔNG PHẢI TIN HỆ THỐNG */}
+                            {!isSystemNoti && (
+                              <Button
+                                type="text"
+                                size="small"
+                                icon={<PlusOutlined style={{ transform: 'rotate(45deg)', color: '#bfbfbf' }} />}
+                                onClick={() => deleteNoti(item)}
+                                style={{
+                                  position: 'absolute',
+                                  top: '8px',
+                                  right: '8px',
+                                  height: '22px',
+                                  width: '22px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}
+                              />
+                            )}
                           </div>
                         );
                       })
@@ -727,6 +815,7 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
                   />
                 </span>
               </Popover>
+
               <div style={{ textAlign: 'right', lineHeight: '1.2' }}>
                 <Text type="secondary" style={{ fontSize: '11px' }}>Chào đại ca,</Text><br />
                 <Text strong style={{ color: '#1890ff' }}>{user?.email.split('@')[0]}</Text>
@@ -758,9 +847,22 @@ const handleUpdateRecord = (fbKey, detailKey, to, value) => {
               <Tabs
                 defaultActiveKey="1"
                 items={[
-                  { key: '1', label: <Badge count={orderCategorized.dangLam.length} offset={[10, 0]}><b>ĐANG SẢN XUẤT</b></Badge>, children: renderOrderList(orderCategorized.dangLam) },
-                  { key: '2', label: <Badge count={orderCategorized.choGiao.length} offset={[10, 0]} color="#52c41a"><b>XONG (CHỜ GIAO)</b></Badge>, children: renderOrderList(orderCategorized.choGiao) },
-                  { key: '3', label: <Badge count={orderCategorized.daGiao.length} offset={[10, 0]} color="#8c8c8c"><b>ĐÃ GIAO</b></Badge>, children: renderOrderList(orderCategorized.daGiao, true) }
+                  {
+                    key: '1',
+                    label: <Badge count={orderCategorized.dangLam.length} offset={[10, 0]}><b>ĐANG SẢN XUẤT</b></Badge>,
+                    children: renderOrderList(orderCategorized.dangLam, false, page1, setPage1)
+                  },
+                  {
+                    key: '2',
+                    label: <Badge count={orderCategorized.choGiao.length} offset={[10, 0]} color="#52c41a"><b>XONG (CHỜ GIAO)</b></Badge>,
+                    children: renderOrderList(orderCategorized.choGiao, false, page2, setPage2)
+                  },
+                  {
+                    key: '3',
+                    label: <Badge count={orderCategorized.daGiao.length} offset={[10, 0]} color="#8c8c8c"><b>ĐÃ GIAO</b></Badge>,
+                    // Truyền page3 và setPage3
+                    children: renderOrderList(orderCategorized.daGiao, true, page3, setPage3)
+                  }
                 ]}
               />
             </div>
