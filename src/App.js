@@ -1,15 +1,15 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Table, Tag, Progress, Card, Typography, Collapse,
   InputNumber, Space, Button, Modal, Form, Input,
   DatePicker, message, List, Popover, Row, Col,
-  Statistic, Tabs, Badge, Avatar, Checkbox, Pagination
+  Statistic, Tabs, Badge, Avatar, Checkbox, Pagination, Flex, Divider
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, BuildOutlined, ClockCircleOutlined,
   CarryOutOutlined, SearchOutlined, HistoryOutlined, AlertOutlined, AppstoreOutlined,
   UserOutlined, LogoutOutlined, LockOutlined, EditOutlined, BellOutlined, CheckCircleOutlined,
-  SendOutlined,
+  SendOutlined, CalendarOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
@@ -41,6 +41,7 @@ const NotificationIcon = React.memo(({ count, hasDanger }) => {
 const App = () => {
   // Thay dòng cũ bằng 2 dòng này
 
+  // 1. Khai báo 3 biến trang cho 3 Tab (Page 1, 2, 3)
   const [page1, setPage1] = useState(1);
   const [page2, setPage2] = useState(1);
   const [page3, setPage3] = useState(1);
@@ -166,7 +167,105 @@ const App = () => {
     return Math.min(100, Math.round((daDongGoi / tongBo) * 100));
   };
 
+  // --- DÙNG USECALLBACK ĐỂ HÀM KHÔNG BỊ TẠO LẠI KHI RENDER ---
+  const handleUpdateGroupRecord = useCallback((fbKey, groupName, to, value) => {
+    const val = parseInt(value) || 0;
+    const order = orders.find(o => o.fbKey === fbKey);
+    if (!order || !groupName) return; // Bảo vệ dữ liệu khỏi undefined
 
+    const newChiTiet = order.chiTiet.map(it => {
+      if (it.groupName === groupName) {
+        const hienTai = it.tienDo?.[to] || 0;
+        if (val === hienTai) return it;
+
+        const newLog = {
+          id: Date.now() + Math.random(),
+          ngay: dayjs().format('DD/MM HH:mm'),
+          to: to.toUpperCase(),
+          sl: val,
+          chenhLech: val - hienTai,
+          userEmail: user?.email || 'Thợ'
+        };
+
+        return {
+          ...it,
+          tienDo: { ...it.tienDo, [to]: val },
+          lichSu: [newLog, ...(it.lichSu || [])]
+        };
+      }
+      return it;
+    });
+
+    update(ref(db, `orders/${fbKey}`), { chiTiet: newChiTiet })
+      .then(() => message.success(`Đã cập nhật cụm ${groupName.toUpperCase()}`));
+  }, [orders, user]); // Các biến phụ thuộc của hàm này
+
+  const handleUpdateRecord = useCallback((fbKey, detailKey, to, value) => {
+    const val = parseInt(value) || 0;
+    const order = orders.find(o => o.fbKey === fbKey);
+    if (!order) return;
+
+    const item = order.chiTiet.find(i => i.key === detailKey);
+    if (!item) return;
+
+    const hienTai = item.tienDo?.[to] || 0;
+    if (val === hienTai) return;
+
+    // ... Logic kiểm tra tổ trước/sau giữ nguyên ...
+    const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'];
+    const currentIndex = steps.indexOf(to);
+    if (currentIndex > 0) {
+      const prevStep = steps[currentIndex - 1];
+      const prevVal = item.tienDo?.[prevStep] || 0;
+      if (val > prevVal && !item.skipSteps?.includes(prevStep)) {
+        message.error(`Tổ ${to.toUpperCase()} (${val}) không được lớn hơn tổ ${prevStep.toUpperCase()} (${prevVal})!`);
+        return;
+      }
+    }
+
+    const newChiTiet = order.chiTiet.map(it => {
+      if (it.key === detailKey) {
+        const deadlineStep = it.deadlines?.[to];
+        let soNgayTreLuuLai = 0;
+        if (deadlineStep && val < it.can) {
+          const homNay = dayjs().startOf('day');
+          const ngayDeadline = dayjs(deadlineStep);
+          if (homNay.isAfter(ngayDeadline)) soNgayTreLuuLai = homNay.diff(ngayDeadline, 'day');
+        }
+
+        const newLog = {
+          id: Date.now(),
+          ngay: dayjs().format('DD/MM HH:mm'),
+          to: to.toUpperCase(),
+          sl: val,
+          chenhLech: val - hienTai,
+          userEmail: user?.email || 'Ẩn danh',
+          tre: soNgayTreLuuLai
+        };
+
+        return {
+          ...it,
+          tienDo: { ...it.tienDo, [to]: val },
+          lichSu: [newLog, ...(it.lichSu || [])]
+        };
+      }
+      return it;
+    });
+
+    update(ref(db, `orders/${fbKey}`), { chiTiet: newChiTiet })
+      .then(() => {
+        message.success(`Đã cập nhật tổ ${to.toUpperCase()}`);
+        push(ref(db, 'notifications/'), {
+          id: Date.now(),
+          title: 'CẬP NHẬT SẢN XUẤT',
+          content: `${(user?.email || 'ẨN DANH').split('@')[0].toUpperCase()} cập nhật [${item.name}] của đơn [${order.tenSP}]`,
+          time: dayjs().format('HH:mm DD/MM'),
+          type: 'info',
+          isRead: false
+        });
+      })
+      .catch(() => message.error("Lỗi kết nối Database!"));
+  }, [orders, user]); // Các biến phụ thuộc của hàm này
 
   const handleLogout = () => signOut(auth).then(() => message.info("Đã đăng xuất!"));
 
@@ -196,182 +295,114 @@ const App = () => {
     }
   };
 
-  const handleUpdateRecord = (fbKey, detailKey, to, value) => {
-    const val = parseInt(value) || 0;
-    const order = orders.find(o => o.fbKey === fbKey);
-    if (!order) return;
 
-    const item = order.chiTiet.find(i => i.key === detailKey);
-    if (!item) return;
 
-    // --- BƯỚC QUAN TRỌNG: Lấy số lượng hiện tại trong máy để so sánh ---
-    const hienTai = item.tienDo?.[to] || 0;
-
-    // Nếu số mới gõ giống hệt số cũ thì thoát luôn, không làm gì cả
-    if (val === hienTai) {
-      return;
+const openEditModal = (order) => {
+  setEditingOrder(order);
+  const initialItems = (order.chiTiet || []).map(item => {
+    const deadlines = {};
+    if (item.deadlines) {
+      Object.keys(item.deadlines).forEach(step => {
+        if (item.deadlines[step]) deadlines[step] = dayjs(item.deadlines[step]);
+      });
     }
+    return {
+      ...item,
+      qty: item.can, // LẤY TỪ 'can' CỦA FIREBASE ĐỔ VÀO 'qty' CỦA FORM
+      skipSteps: Array.isArray(item.skipSteps) ? item.skipSteps : [],
+      deadlines: deadlines
+    };
+  });
 
-    // --- Tiếp tục các logic kiểm tra tổ trước/sau của đại ca ---
-    const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'];
-    const currentIndex = steps.indexOf(to);
+  editForm.setFieldsValue({
+    ...order,
+    ngayGiao: dayjs(order.ngayGiao, 'DD/MM/YYYY'),
+    deadlineDongGoi: order.deadlineDongGoi ? dayjs(order.deadlineDongGoi) : null,
+    items: initialItems
+  });
+  setIsEditModalOpen(true);
+};
 
-    if (currentIndex > 0) {
-      const prevStep = steps[currentIndex - 1];
-      const prevVal = item.tienDo?.[prevStep] || 0;
-      if (val > prevVal) {
-        const isPrevSkipped = item.skipSteps?.includes(prevStep);
-        if (!isPrevSkipped) {
-          message.error(`Tổ ${to.toUpperCase()} (${val}) không được lớn hơn tổ ${prevStep.toUpperCase()} (${prevVal})!`);
-          return;
+const handleUpdateOrder = async (values) => {
+  try {
+    const cleanedItems = values.items.map(it => {
+      const safeDeadlines = {};
+      const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'];
+      
+      steps.forEach(step => {
+        const val = it.deadlines?.[step];
+        if (val && typeof val.format === 'function') {
+          safeDeadlines[step] = val.format('YYYY-MM-DD');
+        } else {
+          safeDeadlines[step] = (typeof val === 'string') ? val : ""; 
         }
-      }
+      });
+
+      return {
+        ...it,
+        can: it.qty, // ĐƯA SỐ LƯỢNG MỚI TỪ FORM (qty) VÀO BIẾN FIREBASE (can)
+        groupName: (it.groupName || "").trim(),
+        soBoCum: it.soBoCum || 0,
+        deadlines: safeDeadlines,
+        skipSteps: Array.isArray(it.skipSteps) ? it.skipSteps : [],
+        // Giữ lại tiến độ và lịch sử cũ nếu có
+        tienDo: it.tienDo || { phoi: 0, dinhHinh: 0, lapRap: 0, nham: 0, son: 0, dongGoi: 0 },
+        lichSu: it.lichSu || []
+      };
+    });
+
+    const finalData = {
+      ...values,
+      chiTiet: cleanedItems,
+      deadlineDongGoi: values.deadlineDongGoi?.format?.('YYYY-MM-DD') || "",
+      ngayGiao: values.ngayGiao?.format?.('DD/MM/YYYY') || ""
+    };
+
+    delete finalData.items; 
+
+    await update(ref(db, `orders/${editingOrder.fbKey}`), finalData);
+    message.success("Đã cập nhật số lượng và checkbox thành công!");
+    setIsEditModalOpen(false);
+  } catch (error) {
+    message.error("Lỗi: " + error.message);
+  }
+};
+
+const handleCreateOrder = (v) => {
+  const list = v.items.map((it, i) => {
+    const formattedDeadlines = {};
+    if (it.deadlines) {
+      Object.keys(it.deadlines).forEach(step => {
+        formattedDeadlines[step] = it.deadlines[step] ? it.deadlines[step].format('YYYY-MM-DD') : "";
+      });
     }
+    return {
+      key: Date.now() + i,
+      name: it.name,
+      can: it.qty, // LƯU VÀO BIẾN 'can'
+      groupName: (it.groupName || "").trim(),
+      soBoCum: it.soBoCum || 0,
+      skipSteps: Array.isArray(it.skipSteps) ? it.skipSteps : [], 
+      deadlines: formattedDeadlines,
+      tienDo: { phoi: 0, dinhHinh: 0, lapRap: 0, nham: 0, son: 0, dongGoi: 0 },
+      lichSu: []
+    };
+  });
 
-    // --- Thực hiện cập nhật vì số lượng ĐÃ THAY ĐỔI ---
-    const newChiTiet = order.chiTiet.map(it => {
-      if (it.key === detailKey) {
-        const deadlineStep = it.deadlines?.[to];
-        let soNgayTreLuuLai = 0;
-        if (deadlineStep && val < it.can) {
-          const homNay = dayjs().startOf('day');
-          const ngayDeadline = dayjs(deadlineStep);
-          if (homNay.isAfter(ngayDeadline)) {
-            soNgayTreLuuLai = homNay.diff(ngayDeadline, 'day');
-          }
-        }
-
-        const newLog = {
-          id: Date.now(),
-          ngay: dayjs().format('DD/MM HH:mm'),
-          to: to.toUpperCase(),
-          sl: val,
-          chenhLech: val - hienTai, // Tính chênh lệch thật sự
-          userEmail: user?.email || 'Ẩn danh',
-          tre: soNgayTreLuuLai
-        };
-
-        return {
-          ...it,
-          tienDo: { ...it.tienDo, [to]: val },
-          lichSu: [newLog, ...(it.lichSu || [])]
-        };
-      }
-      return it;
-    });
-
-    // Chỉ khi qua được bước kiểm tra (val !== hienTai) thì mới chạy lệnh này
-    update(ref(db, `orders/${fbKey}`), { chiTiet: newChiTiet })
-      .then(() => {
-        message.success(`Đã cập nhật tổ ${to.toUpperCase()}`);
-
-        // Đẩy thông báo chuông (Chỉ chạy khi có thay đổi thực sự)
-        const notiRef = ref(db, 'notifications/');
-        const canBo = user?.email ? user.email.split('@')[0].toUpperCase() : 'ẨN DANH';
-
-        push(notiRef, {
-          id: Date.now(),
-          title: 'CẬP NHẬT SẢN XUẤT',
-          content: `${canBo} vừa cập nhật [${item.name}] của đơn [${order.tenSP}] - Tổ: ${to.toUpperCase()} chốt ${val} SP`,
-          time: dayjs().format('HH:mm DD/MM'),
-          type: 'info',
-          isRead: false
-        });
-      })
-      .catch(() => message.error("Lỗi kết nối Database!"));
-  };
-
-  const openEditModal = (order) => {
-    setEditingOrder(order);
-    const initialItems = order.chiTiet.map(item => {
-      const deadlines = {};
-      if (item.deadlines) {
-        Object.keys(item.deadlines).forEach(step => {
-          if (item.deadlines[step]) deadlines[step] = dayjs(item.deadlines[step]);
-        });
-      }
-      return {
-        ...item,
-        qty: item.can,
-        skipSteps: item.skipSteps || [],
-        deadlines: deadlines
-      };
-    });
-
-    editForm.setFieldsValue({
-      tenSP: order.tenSP,
-      tongSoBo: order.tongSoBo,
-      ngayGiao: dayjs(order.ngayGiao, 'DD/MM/YYYY'),
-      deadlineDongGoi: order.deadlineDongGoi ? dayjs(order.deadlineDongGoi) : null,
-      items: initialItems
-    });
-    setIsEditModalOpen(true);
-  };
-
-  const handleUpdateOrder = (values) => {
-    const updatedChiTiet = values.items.map((item) => {
-      const formattedDeadlines = {};
-      if (item.deadlines) {
-        Object.keys(item.deadlines).forEach(step => {
-          if (item.deadlines[step]) formattedDeadlines[step] = item.deadlines[step].format('YYYY-MM-DD');
-        });
-      }
-      return {
-        ...item,
-        skipSteps: item.skipSteps || [],
-        key: item.key || Date.now() + Math.random(),
-        can: item.qty,
-        deadlines: formattedDeadlines,
-        tienDo: item.tienDo || { phoi: 0, dinhHinh: 0, lapRap: 0, nham: 0, son: 0, dongGoi: 0 },
-        lichSu: item.lichSu || []
-      };
-    });
-
-    update(ref(db, `orders/${editingOrder.fbKey}`), {
-      tenSP: values.tenSP.toUpperCase(),
-      tongSoBo: Number(values.tongSoBo),
-      ngayGiao: values.ngayGiao.format('DD/MM/YYYY'),
-      deadlineDongGoi: values.deadlineDongGoi ? values.deadlineDongGoi.format('YYYY-MM-DD') : null,
-      chiTiet: updatedChiTiet
-    }).then(() => {
-      message.success("Đã cập nhật xong!");
-      setIsEditModalOpen(false);
-    });
-  };
-
-  const handleCreateOrder = (v) => {
-    const list = v.items.map((it, i) => {
-      const formattedDeadlines = {};
-      if (it.deadlines) {
-        Object.keys(it.deadlines).forEach(step => {
-          if (it.deadlines[step]) formattedDeadlines[step] = it.deadlines[step].format('YYYY-MM-DD');
-        });
-      }
-      return {
-        key: Date.now() + i,
-        name: it.name,
-        can: it.qty,
-        skipSteps: it.skipSteps || [],
-        deadlines: formattedDeadlines,
-        tienDo: { phoi: 0, dinhHinh: 0, lapRap: 0, nham: 0, son: 0, dongGoi: 0 },
-        lichSu: []
-      };
-    });
-
-    push(ref(db, 'orders/'), {
-      tenSP: v.tenSP.toUpperCase(),
-      tongSoBo: Number(v.tongSoBo),
-      soLuongDongGoi: 0,
-      ngayGiao: v.ngayGiao.format('DD/MM/YYYY'),
-      deadlineDongGoi: v.deadlineDongGoi ? v.deadlineDongGoi.format('YYYY-MM-DD') : null,
-      chiTiet: list,
-      daGiao: false
-    }).then(() => {
-      setIsModalOpen(false);
-      form.resetFields();
-      message.success('Đã tạo đơn thành công!');
-    });
-  };
+  push(ref(db, 'orders/'), {
+    tenSP: v.tenSP.toUpperCase(),
+    tongSoBo: Number(v.tongSoBo),
+    soLuongDongGoi: 0,
+    ngayGiao: v.ngayGiao.format('DD/MM/YYYY'), // Giữ định dạng này cho Table
+    deadlineDongGoi: v.deadlineDongGoi ? v.deadlineDongGoi.format('YYYY-MM-DD') : "",
+    chiTiet: list,
+    daGiao: false
+  }).then(() => {
+    setIsModalOpen(false);
+    form.resetFields();
+    message.success('Đã tạo đơn thành công!');
+  });
+};
 
   const stats = useMemo(() => {
     const total = orders.filter(o => !o.daGiao).length;
@@ -399,81 +430,245 @@ const App = () => {
     };
   }, [orders, searchText, dateRange]);
 
-  const columns = (fbKey) => [
+  const tableColumns = useMemo(() => (fbKey, orderData, order) => [
     {
-      title: 'CHI TIẾT', dataIndex: 'name', width: 100, fixed: 'left',
+      title: 'CHI TIẾT',
+      dataIndex: 'name',
+      width: 120,
+      fixed: 'left',
       render: (text, record) => (
-        <Space orientation="vertical" size={0}>
-          <Text strong style={{ color: '#1890ff' }}>{text}</Text>
-          <Popover content={
-            <List size="small" dataSource={record.lichSu} renderItem={i => (
-              <List.Item><Text type="secondary">{i.ngay}</Text>: <Tag color={i.sl > 0 ? "green" : "red"}>{i.sl > 0 ? `+${i.sl}` : i.sl}</Tag> <b>{i.to}</b></List.Item>
-            )} />
-          } title="Nhật ký sản xuất" trigger="click">
-            <Button type="link" size="small" icon={<HistoryOutlined />} style={{ padding: 0 }}>Nhật ký</Button>
+        <Flex vertical gap={0} align="start">
+          <Text strong style={{ color: '#1890ff', lineHeight: '1.2' }}>{text}</Text>
+          <Popover
+            content={
+              <List
+                size="small"
+                dataSource={record.lichSu || []}
+                renderItem={i => (
+                  <List.Item>
+                    <Text type="secondary">{i.ngay}</Text>:
+                    <Tag color={i.sl > 0 ? "green" : "red"}>{i.sl > 0 ? `+${i.sl}` : i.sl}</Tag>
+                    <b>{i.to}</b>
+                  </List.Item>
+                )}
+              />
+            }
+            title="Nhật ký sản xuất"
+            trigger="click"
+          >
+            <Button
+              type="link"
+              size="small"
+              icon={<HistoryOutlined />}
+              style={{ padding: 0, fontSize: '11px', height: '20px' }}
+            >
+              Lịch sử
+            </Button>
           </Popover>
-        </Space>
+        </Flex>
       )
     },
-    { title: 'CẦN', dataIndex: 'can', width: 80, align: 'center', render: v => <Tag color="blue" style={{ fontWeight: 'bold' }}>{v}</Tag> },
+    {
+      title: 'CẦN (CÁI)',
+      dataIndex: 'can',
+      align: 'center',
+      width: 90,
+      render: (can) => <Tag color="blue" style={{ fontWeight: 'bold' }}>{can} cái</Tag>
+    },
+
+    {
+      title: 'CỤM (BỘ PHẬN)',
+      dataIndex: 'groupName',
+      width: 120,
+      align: 'center',
+      onCell: (record, index) => {
+        if (!record.groupName || record.groupName.trim() === "") {
+          return { rowSpan: 1 }; // Hiện bình thường, không gộp
+        }
+
+        const chiTiet = orderData?.chiTiet || [];
+        const currentGroupName = record.groupName.trim();
+
+        // Tìm những thằng có cùng tên cụm
+        const sameGroup = chiTiet.filter(i => i.groupName && i.groupName.trim() === currentGroupName);
+        // Tìm vị trí đầu tiên của cụm này trong danh sách
+        const firstIndex = chiTiet.findIndex(i => i.groupName && i.groupName.trim() === currentGroupName);
+
+        if (index === firstIndex) {
+          return { rowSpan: sameGroup.length }; // Thằng đầu tiên giữ chỗ cho cả nhóm
+        }
+        return { rowSpan: 0 }; // Thằng sau thì ẩn đi
+      },
+      render: (val) => val ? <Tag color="orange" style={{ fontWeight: 'bold' }}>{val.toUpperCase()}</Tag> : <Text type="secondary">-</Text>
+    },
+    {
+      title: 'CẦN (BỘ)',
+      align: 'center',
+      width: 90,
+      onCell: (record, index) => {
+        // Kiểm tra nếu không có chi tiết hoặc không có groupName thì không gộp
+        const ds = orderData?.chiTiet || orderData?.items || [];
+        if (!record.groupName || ds.length === 0) return { rowSpan: 1 };
+
+        const sameGroup = ds.filter(i => i.groupName === record.groupName);
+        const firstIndex = ds.findIndex(i => i.groupName === record.groupName);
+
+        if (index === firstIndex) return { rowSpan: sameGroup.length };
+        return { rowSpan: 0 };
+      },
+      render: (_, record) => {
+        // SỬA TẠI ĐÂY: Hiển thị soBoCum thay vì tongSoBo
+        if (record.groupName && record.groupName.trim() !== "") {
+          return (
+            <Tag color="purple" style={{ fontWeight: 'bold', margin: 0 }}>
+              {/* Mày phải dùng record.soBoCum thì nó mới hiện con số mày vừa gõ trong Form */}
+              {record.soBoCum || 0} bộ
+            </Tag>
+          );
+        }
+        return <Text type="secondary">-</Text>;
+      }
+    },
     ...['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'].map(step => ({
       title: step.toUpperCase(), align: 'center', width: 110,
+      onCell: (record, index) => {
+        if (['lapRap', 'nham', 'son'].includes(step) && record.groupName) {
+          const sameGroup = orderData.chiTiet.filter(i => i.groupName === record.groupName);
+          const firstIndex = orderData.chiTiet.findIndex(i => i.groupName === record.groupName);
+          if (index === firstIndex) return { rowSpan: sameGroup.length };
+          return { rowSpan: 0 };
+        }
+        return { rowSpan: 1 };
+      },
       render: (_, record) => {
         const isSkipped = record.skipSteps?.includes(step);
         if (isSkipped) return <Tag color="default" style={{ opacity: 0.5, fontSize: '10px' }}>BỎ QUA</Tag>;
 
-        const can = Number(record.can) || 0;
+        const isGroupStep = ['lapRap', 'nham', 'son'].includes(step);
+
+        // Đích cần đạt: Tổ bộ so với soBoCum, tổ lẻ so với can
+        const targetNeed = (isGroupStep && record.groupName)
+          ? (Number(record.soBoCum) || 0)
+          : (Number(record.can) || 0);
+
         const val = Number(record.tienDo?.[step]) || 0;
-        const diff = val - can;
+        const remaining = targetNeed - val;
 
         const deadlineDate = record.deadlines?.[step];
         const homNay = dayjs().startOf('day');
         const ngayDeadline = deadlineDate ? dayjs(deadlineDate) : null;
-
-        const isOverdue = ngayDeadline && val < can && homNay.isAfter(ngayDeadline);
-        const soNgayTre = isOverdue ? homNay.diff(ngayDeadline, 'day') : 0;
+        const isOverdue = ngayDeadline && val < targetNeed && homNay.isAfter(ngayDeadline);
 
         return (
-          <div style={{ padding: '2px', borderRadius: '4px', background: isOverdue ? '#fff1f0' : 'transparent', border: isOverdue ? '1px solid #ffa39e' : 'none' }}>
+          <div style={{ padding: '2px' }}>
+            {/* NHÃN TÊN CỤM CHO MOBILE: Xuất hiện phía trên ô nhập của các tổ bộ */}
+            {isGroupStep && record.groupName && (
+              <div style={{
+                fontSize: '10px',
+                color: '#d46b08',
+                background: '#fff7e6',
+                border: '1px solid #ffd591',
+                borderRadius: '4px',
+                padding: '0 4px',
+                marginBottom: '4px',
+                textAlign: 'center',
+                fontWeight: 'bold',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis'
+              }}>
+                {record.groupName.toUpperCase()}
+              </div>
+            )}
+
             <InputNumber
               min={0}
               value={val}
-              status={isOverdue ? "error" : (diff > 0 ? "warning" : "")}
+              status={isOverdue ? "error" : (val > targetNeed ? "warning" : "")}
               onBlur={(e) => {
-                const value = e.target.value.replace(/\./g, '');
-                handleUpdateRecord(fbKey, record.key, step, value);
+                const rawValue = e.target.value.replace(/\./g, '');
+                const newVal = rawValue === "" ? 0 : Number(rawValue);
+                if (newVal !== val) {
+                  if (record.groupName && isGroupStep) {
+                    handleUpdateGroupRecord(fbKey, record.groupName, step, newVal);
+                  } else {
+                    handleUpdateRecord(fbKey, record.key, step, newVal);
+                  }
+                }
               }}
-              style={{ width: '100%' }}
+              style={{
+                width: '100%',
+                fontWeight: (record.groupName && isGroupStep) ? 'bold' : 'normal',
+                color: isGroupStep ? '#722ed1' : '#1890ff'
+              }}
             />
-            <div style={{ fontSize: '10px', fontWeight: 'bold', marginTop: '2px' }}>
-              {ngayDeadline ? (
-                <div style={{ color: isOverdue ? '#cf1322' : '#8c8c8c' }}>
-                  Hạn: {ngayDeadline.format('DD/MM')}
-                  {isOverdue && <div style={{ color: '#f5222d', background: '#fff', padding: '1px' }}>⚠️ TRỄ {soNgayTre} NGÀY</div>}
-                </div>
-              ) : <span style={{ color: '#d9d9d9' }}>--</span>}
 
-              {diff > 0 && <span style={{ color: '#faad14' }}>DƯ: {diff}</span>}
-              {diff < 0 && !isOverdue && <span style={{ color: '#ff4d4f' }}>THIẾU: {Math.abs(diff)}</span>}
+            <div style={{ marginTop: '4px', textAlign: 'center' }}>
+              {remaining > 0 ? (
+                <Text type="danger" style={{ fontSize: '11px', fontWeight: 'bold' }}>
+                  Thiếu: {remaining} {isGroupStep && record.groupName ? 'bộ' : 'cái'}
+                </Text>
+              ) : remaining < 0 ? (
+                <Text type="warning" style={{ fontSize: '11px', fontWeight: 'bold' }}>
+                  Thừa: {Math.abs(remaining)} {isGroupStep && record.groupName ? 'bộ' : 'cái'}
+                </Text>
+              ) : val > 0 ? (
+                <Tag color="success" style={{ fontSize: '10px', margin: 0, padding: '0 4px' }}>ĐỦ</Tag>
+              ) : null}
             </div>
+
+            {ngayDeadline && val < targetNeed && (
+              <div style={{ fontSize: '10px', color: isOverdue ? '#f5222d' : '#8c8c8c', marginTop: '2px' }}>
+                Hạn: {ngayDeadline.format('DD/MM')}
+              </div>
+            )}
           </div>
         )
       }
     })),
-  ];
+  ], [handleUpdateGroupRecord, handleUpdateRecord]);
+
+
+
+
+
+
+
   const renderOrderList = (data, isDeliveredTab = false, page, setPage) => {
-    const collapseItems = data.map(order => {
+    // 1. TỰ ĐỘNG SẮP XẾP: Gom các linh kiện cùng Cụm lại với nhau trước khi render
+    const processedData = data.map(order => {
+      const sortedChiTiet = [...(order.chiTiet || [])].sort((a, b) => {
+        // Đẩy linh kiện có groupName lên trên, sắp xếp theo tên cụm
+        const groupA = a.groupName?.trim() || "ZZZZ";
+        const groupB = b.groupName?.trim() || "ZZZZ";
+        return groupA.localeCompare(groupB);
+      });
+      return { ...order, chiTiet: sortedChiTiet };
+    });
+
+    const collapseItems = processedData.map(order => {
+      const currentColumns = tableColumns(order.fbKey, order, order);
       const progress = calculateOrderProgress(order);
       const isDone = (order.soLuongDongGoi || 0) >= (order.tongSoBo || 1);
       const isPackingOverdue = order.deadlineDongGoi && !isDone && dayjs().isAfter(dayjs(order.deadlineDongGoi), 'day');
 
-      // Kiểm tra đủ linh kiện
       const isDuLinhKien = order.chiTiet?.every(item => {
-        const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son'];
-        return steps.every(step => {
+        const individualSteps = ['phoi', 'dinhHinh'];
+        const isIndividualDone = individualSteps.every(step => {
           if (item.skipSteps?.includes(step)) return true;
-          return (item.tienDo?.[step] || 0) >= item.can;
+          return (item.tienDo?.[step] || 0) >= (item.can || 0);
         });
+
+        const groupSteps = ['lapRap', 'nham', 'son'];
+        const isGroupDone = groupSteps.every(step => {
+          if (item.skipSteps?.includes(step)) return true;
+          if (item.groupName) {
+            return (item.tienDo?.[step] || 0) >= (order.tongSoBo || 0);
+          }
+          return (item.tienDo?.[step] || 0) >= (item.can || 0);
+        });
+
+        return isIndividualDone && isGroupDone;
       });
 
       return {
@@ -505,12 +700,15 @@ const App = () => {
         children: (
           <>
             <Table
-              columns={columns(order.fbKey)}
+              // SỬ DỤNG order.chiTiet ĐÃ ĐƯỢC SORT Ở TRÊN
+              columns={currentColumns}
               dataSource={order.chiTiet}
               pagination={false}
               bordered
-              scroll={{ x: 1000 }}
+              scroll={{ x: 1400 }}
               size="middle"
+              // Đảm bảo rowKey chuẩn để Ant Design không render nhầm hàng
+              rowKey={(record) => record.key || record.name}
             />
             <div style={{
               marginTop: 15,
@@ -534,6 +732,9 @@ const App = () => {
                     value={order.soLuongDongGoi || 0}
                     disabled={order.daGiao || !isDuLinhKien}
                     status={!isDuLinhKien ? "warning" : (isPackingOverdue ? "error" : "")}
+                    onChange={(val) => {
+                      // Cập nhật tạm thời để UI mượt, hoặc dùng onBlur như cũ
+                    }}
                     onBlur={(e) => {
                       const newVal = Number(e.target.value) || 0;
                       if (newVal !== order.soLuongDongGoi) {
@@ -576,7 +777,6 @@ const App = () => {
       };
     });
 
-    // Tính toán phân trang dựa trên page được truyền vào
     const startIndex = (page - 1) * pageSize;
     const paginatedItems = collapseItems.slice(startIndex, startIndex + pageSize);
 
@@ -614,7 +814,6 @@ const App = () => {
         justifyContent: 'center',
         alignItems: 'center',
         height: '100vh',
-        // Link ảnh gỗ sản xuất mới, cực kỳ ổn định
         backgroundSize: 'cover',
         backgroundPosition: 'center',
         fontFamily: "'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
@@ -949,20 +1148,99 @@ const App = () => {
             {(fields, { add, remove }) => (
               <>
                 {fields.map(({ key, name, ...restField }) => (
-                  <Card size="small" key={key} style={{ marginBottom: 15, background: '#fafafa', border: '1px solid #d9d9d9' }}>
-                    <Row gutter={12} align="middle">
-                      <Col span={14}><Form.Item {...restField} name={[name, 'name']} rules={[{ required: true }]}><Input placeholder="Tên linh kiện" /></Form.Item></Col>
-                      <Col span={8}><Form.Item {...restField} name={[name, 'qty']} rules={[{ required: true }]} label="SL/Bộ"><InputNumber min={1} style={{ width: '100%' }} /></Form.Item></Col>
-                      <Col span={2}><Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(name)} /></Col>
+                  <Card
+                    size="small"
+                    key={key}
+                    style={{
+                      marginBottom: 20,
+                      borderRadius: '8px',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+                      borderLeft: '4px solid #1890ff' // Vạch màu xanh bên trái cho chuyên nghiệp
+                    }}
+                    bodyStyle={{ padding: '12px 20px' }}
+                  >
+                    {/* HÀNG 1: THÔNG TIN CHÍNH */}
+                    <Row gutter={16} align="bottom">
+                      <Col span={6}>
+                        <Form.Item
+                          {...restField}
+                          name={[name, 'groupName']}
+                          label={<Text strong style={{ color: '#d48806' }}>Tên Cụm (Nếu có)</Text>}
+                        // Tuyệt đối không để rules ở đây
+                        >
+                          <Input
+                            placeholder="Lẻ thì để trống"
+                            allowClear
+                            style={{ background: '#fffbe6', border: '1px solid #ffe58f' }}
+                          />
+                        </Form.Item>
+                      </Col>
 
-                      <Col span={24}>
-                        <div style={{ background: '#fff', padding: '10px', borderRadius: '4px', border: '1px dashed #d9d9d9' }}>
-                          <Text type="secondary" style={{ fontSize: '11px', fontWeight: 'bold' }}>DEADLINE TỪNG TỔ:</Text>
-                          <Row gutter={[8, 4]} style={{ marginTop: 5 }}>
+                      <Col span={4}>
+                        <Form.Item
+                          {...restField}
+                          name={[name, 'soBoCum']}
+                          label={<Text strong style={{ color: '#722ed1' }}>Số Bộ/Cụm</Text>}
+                        >
+                          <InputNumber
+                            min={0}
+                            style={{ width: '100%', borderColor: '#d3adf7' }}
+                            placeholder="0"
+                          />
+                        </Form.Item>
+                      </Col>
+
+                      <Col span={8}>
+                        <Form.Item
+                          {...restField}
+                          name={[name, 'name']}
+                          rules={[{ required: true, message: 'Nhập tên linh kiện!' }]}
+                          label={<Text strong style={{ color: '#096dd9' }}>Tên Linh Kiện</Text>}
+                        >
+                          <Input placeholder="Nhập tên chi tiết..." />
+                        </Form.Item>
+                      </Col>
+
+                      <Col span={4}>
+                        <Form.Item
+                          {...restField}
+                          name={[name, 'qty']}
+                          rules={[{ required: true, message: 'Nhập số lượng!' }]}
+                          label={<Text strong style={{ color: '#096dd9' }}>SL Cái</Text>}
+                        >
+                          <InputNumber min={1} style={{ width: '100%' }} />
+                        </Form.Item>
+                      </Col>
+
+                      <Col span={2} style={{ textAlign: 'right' }}>
+                        <Button
+                          type="primary" danger ghost shape="circle"
+                          icon={<DeleteOutlined />}
+                          onClick={() => remove(name)}
+                          style={{ marginBottom: '5px' }}
+                        />
+                      </Col>
+                    </Row>
+
+                    <Divider style={{ margin: '12px 0' }} />
+
+                    {/* HÀNG 2: DEADLINE & SKIP STEPS */}
+                    <Row gutter={16}>
+                      <Col span={16}>
+                        <div style={{ background: '#f0f5ff', padding: '10px', borderRadius: '6px', border: '1px solid #adc6ff' }}>
+                          <Text type="secondary" style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
+                            <CalendarOutlined /> HẠN CHÓT TỪNG TỔ:
+                          </Text>
+                          <Row gutter={[8, 8]}>
                             {['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'].map(step => (
-                              <Col span={4} key={step}> {/* Chỉnh lại span cho vừa 6 cột */}
-                                <Form.Item name={[name, 'deadlines', step]} label={step.toUpperCase()}>
-                                  <DatePicker size="small" format="DD/MM" style={{ width: '100%' }} />
+                              <Col span={4} key={step}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'deadlines', step]}
+                                  label={<span style={{ fontSize: '10px' }}>{step.toUpperCase()}</span>}
+                                  style={{ marginBottom: 0 }}
+                                >
+                                  <DatePicker size="small" format="DD/MM" style={{ width: '100%' }} placeholder="--/--" />
                                 </Form.Item>
                               </Col>
                             ))}
@@ -970,16 +1248,32 @@ const App = () => {
                         </div>
                       </Col>
 
-                      <Col span={24} style={{ marginTop: 10 }}>
-                        <Form.Item name={[name, 'skipSteps']} label={<Text type="secondary" style={{ fontSize: '11px' }}>Bỏ qua công đoạn:</Text>} style={{ marginBottom: 0 }}>
-                          <Checkbox.Group options={['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'].map(s => ({ label: s.toUpperCase(), value: s }))} />
-                        </Form.Item>
+                      <Col span={8}>
+                        <div style={{ background: '#fff1f0', padding: '10px', borderRadius: '6px', border: '1px solid #ffa39e', height: '100%' }}>
+                          <Form.Item
+                            {...restField}
+                            name={[name, 'skipSteps']}
+                            label={<Text type="danger" style={{ fontSize: '11px', fontWeight: 'bold' }}>BỎ QUA CÔNG ĐOẠN:</Text>}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <Checkbox.Group style={{ width: '100%' }}>
+                              <Row>
+                                {['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'].map(s => (
+                                  <Col span={8} key={s}>
+                                    <Checkbox value={s} style={{ fontSize: '10px' }}>{s.toUpperCase()}</Checkbox>
+                                  </Col>
+                                ))}
+                              </Row>
+                            </Checkbox.Group>
+                          </Form.Item>
+                        </div>
                       </Col>
-
-                      <Form.Item name={[name, 'key']} hidden><Input /></Form.Item>
-                      <Form.Item name={[name, 'tienDo']} hidden><Input /></Form.Item>
-                      <Form.Item name={[name, 'lichSu']} hidden><Input /></Form.Item>
                     </Row>
+
+                    {/* Hidden fields */}
+                    <Form.Item name={[name, 'key']} hidden><Input /></Form.Item>
+                    <Form.Item name={[name, 'tienDo']} hidden><Input /></Form.Item>
+                    <Form.Item name={[name, 'lichSu']} hidden><Input /></Form.Item>
                   </Card>
                 ))}
                 <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} style={{ marginBottom: 20 }}>Thêm linh kiện</Button>
