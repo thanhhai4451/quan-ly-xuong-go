@@ -9,14 +9,15 @@ import {
   PlusOutlined, DeleteOutlined, BuildOutlined, ClockCircleOutlined,
   CarryOutOutlined, SearchOutlined, HistoryOutlined, AlertOutlined, AppstoreOutlined,
   UserOutlined, LogoutOutlined, LockOutlined, EditOutlined, BellOutlined, CheckCircleOutlined,
-  SendOutlined, CalendarOutlined
+  SendOutlined, CalendarOutlined, SwapOutlined
+  
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
 import { db, auth } from "./firebase";
 import { ref, push, onValue, remove, update } from "firebase/database";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
-
+import ProductionTransfer from './ProductionTransfer'; // Lưu ý: để chung thư mục với App.js
 const { Panel } = Collapse;
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -43,7 +44,7 @@ const App = () => {
 
   // 1. Khai báo 3 biến trang cho 3 Tab (Page 1, 2, 3)
   const [page1, setPage1] = useState(1);
-  const [page2, setPage2] = useState(1); 
+  const [page2, setPage2] = useState(1);
   const [page3, setPage3] = useState(1);
 
   const pageSize = 10;
@@ -167,7 +168,7 @@ const App = () => {
     return Math.min(100, Math.round((daDongGoi / tongBo) * 100));
   };
 
-  
+
 
   // --- DÙNG USECALLBACK ĐỂ HÀM KHÔNG BỊ TẠO LẠI KHI RENDER ---
   const handleUpdateGroupRecord = useCallback((fbKey, groupName, to, value) => {
@@ -299,112 +300,112 @@ const App = () => {
 
 
 
-const openEditModal = (order) => {
-  setEditingOrder(order);
-  const initialItems = (order.chiTiet || []).map(item => {
-    const deadlines = {};
-    if (item.deadlines) {
-      Object.keys(item.deadlines).forEach(step => {
-        if (item.deadlines[step]) deadlines[step] = dayjs(item.deadlines[step]);
-      });
-    }
-    return {
-      ...item,
-      qty: item.can, // LẤY TỪ 'can' CỦA FIREBASE ĐỔ VÀO 'qty' CỦA FORM
-      skipSteps: Array.isArray(item.skipSteps) ? item.skipSteps : [],
-      deadlines: deadlines
-    };
-  });
-
-  editForm.setFieldsValue({
-    ...order,
-    ngayGiao: dayjs(order.ngayGiao, 'DD/MM/YYYY'),
-    deadlineDongGoi: order.deadlineDongGoi ? dayjs(order.deadlineDongGoi) : null,
-    items: initialItems
-  });
-  setIsEditModalOpen(true);
-};
-
-const handleUpdateOrder = async (values) => {
-  try {
-    const cleanedItems = values.items.map(it => {
-      const safeDeadlines = {};
-      const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'];
-      
-      steps.forEach(step => {
-        const val = it.deadlines?.[step];
-        if (val && typeof val.format === 'function') {
-          safeDeadlines[step] = val.format('YYYY-MM-DD');
-        } else {
-          safeDeadlines[step] = (typeof val === 'string') ? val : ""; 
-        }
-      });
-
+  const openEditModal = (order) => {
+    setEditingOrder(order);
+    const initialItems = (order.chiTiet || []).map(item => {
+      const deadlines = {};
+      if (item.deadlines) {
+        Object.keys(item.deadlines).forEach(step => {
+          if (item.deadlines[step]) deadlines[step] = dayjs(item.deadlines[step]);
+        });
+      }
       return {
-        ...it,
-        can: it.qty, // ĐƯA SỐ LƯỢNG MỚI TỪ FORM (qty) VÀO BIẾN FIREBASE (can)
-        groupName: (it.groupName || "").trim(),
-        soBoCum: it.soBoCum || 0,
-        deadlines: safeDeadlines,
-        skipSteps: Array.isArray(it.skipSteps) ? it.skipSteps : [],
-        // Giữ lại tiến độ và lịch sử cũ nếu có
-        tienDo: it.tienDo || { phoi: 0, dinhHinh: 0, lapRap: 0, nham: 0, son: 0, dongGoi: 0 },
-        lichSu: it.lichSu || []
+        ...item,
+        qty: item.can, // LẤY TỪ 'can' CỦA FIREBASE ĐỔ VÀO 'qty' CỦA FORM
+        skipSteps: Array.isArray(item.skipSteps) ? item.skipSteps : [],
+        deadlines: deadlines
       };
     });
 
-    const finalData = {
-      ...values,
-      chiTiet: cleanedItems,
-      deadlineDongGoi: values.deadlineDongGoi?.format?.('YYYY-MM-DD') || "",
-      ngayGiao: values.ngayGiao?.format?.('DD/MM/YYYY') || ""
-    };
+    editForm.setFieldsValue({
+      ...order,
+      ngayGiao: dayjs(order.ngayGiao, 'DD/MM/YYYY'),
+      deadlineDongGoi: order.deadlineDongGoi ? dayjs(order.deadlineDongGoi) : null,
+      items: initialItems
+    });
+    setIsEditModalOpen(true);
+  };
 
-    delete finalData.items; 
+  const handleUpdateOrder = async (values) => {
+    try {
+      const cleanedItems = values.items.map(it => {
+        const safeDeadlines = {};
+        const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'];
 
-    await update(ref(db, `orders/${editingOrder.fbKey}`), finalData);
-    message.success("Đã cập nhật số lượng và checkbox thành công!");
-    setIsEditModalOpen(false);
-  } catch (error) {
-    message.error("Lỗi: " + error.message);
-  }
-};
+        steps.forEach(step => {
+          const val = it.deadlines?.[step];
+          if (val && typeof val.format === 'function') {
+            safeDeadlines[step] = val.format('YYYY-MM-DD');
+          } else {
+            safeDeadlines[step] = (typeof val === 'string') ? val : "";
+          }
+        });
 
-const handleCreateOrder = (v) => {
-  const list = v.items.map((it, i) => {
-    const formattedDeadlines = {};
-    if (it.deadlines) {
-      Object.keys(it.deadlines).forEach(step => {
-        formattedDeadlines[step] = it.deadlines[step] ? it.deadlines[step].format('YYYY-MM-DD') : "";
+        return {
+          ...it,
+          can: it.qty, // ĐƯA SỐ LƯỢNG MỚI TỪ FORM (qty) VÀO BIẾN FIREBASE (can)
+          groupName: (it.groupName || "").trim(),
+          soBoCum: it.soBoCum || 0,
+          deadlines: safeDeadlines,
+          skipSteps: Array.isArray(it.skipSteps) ? it.skipSteps : [],
+          // Giữ lại tiến độ và lịch sử cũ nếu có
+          tienDo: it.tienDo || { phoi: 0, dinhHinh: 0, lapRap: 0, nham: 0, son: 0, dongGoi: 0 },
+          lichSu: it.lichSu || []
+        };
       });
-    }
-    return {
-      key: Date.now() + i,
-      name: it.name,
-      can: it.qty, // LƯU VÀO BIẾN 'can'
-      groupName: (it.groupName || "").trim(),
-      soBoCum: it.soBoCum || 0,
-      skipSteps: Array.isArray(it.skipSteps) ? it.skipSteps : [], 
-      deadlines: formattedDeadlines,
-      tienDo: { phoi: 0, dinhHinh: 0, lapRap: 0, nham: 0, son: 0, dongGoi: 0 },
-      lichSu: []
-    };
-  });
 
-  push(ref(db, 'orders/'), {
-    tenSP: v.tenSP.toUpperCase(),
-    tongSoBo: Number(v.tongSoBo),
-    soLuongDongGoi: 0,
-    ngayGiao: v.ngayGiao.format('DD/MM/YYYY'), // Giữ định dạng này cho Table
-    deadlineDongGoi: v.deadlineDongGoi ? v.deadlineDongGoi.format('YYYY-MM-DD') : "",
-    chiTiet: list,
-    daGiao: false
-  }).then(() => {
-    setIsModalOpen(false);
-    form.resetFields();
-    message.success('Đã tạo đơn thành công!');
-  });
-};
+      const finalData = {
+        ...values,
+        chiTiet: cleanedItems,
+        deadlineDongGoi: values.deadlineDongGoi?.format?.('YYYY-MM-DD') || "",
+        ngayGiao: values.ngayGiao?.format?.('DD/MM/YYYY') || ""
+      };
+
+      delete finalData.items;
+
+      await update(ref(db, `orders/${editingOrder.fbKey}`), finalData);
+      message.success("Đã cập nhật số lượng và checkbox thành công!");
+      setIsEditModalOpen(false);
+    } catch (error) {
+      message.error("Lỗi: " + error.message);
+    }
+  };
+
+  const handleCreateOrder = (v) => {
+    const list = v.items.map((it, i) => {
+      const formattedDeadlines = {};
+      if (it.deadlines) {
+        Object.keys(it.deadlines).forEach(step => {
+          formattedDeadlines[step] = it.deadlines[step] ? it.deadlines[step].format('YYYY-MM-DD') : "";
+        });
+      }
+      return {
+        key: Date.now() + i,
+        name: it.name,
+        can: it.qty, // LƯU VÀO BIẾN 'can'
+        groupName: (it.groupName || "").trim(),
+        soBoCum: it.soBoCum || 0,
+        skipSteps: Array.isArray(it.skipSteps) ? it.skipSteps : [],
+        deadlines: formattedDeadlines,
+        tienDo: { phoi: 0, dinhHinh: 0, lapRap: 0, nham: 0, son: 0, dongGoi: 0 },
+        lichSu: []
+      };
+    });
+
+    push(ref(db, 'orders/'), {
+      tenSP: v.tenSP.toUpperCase(),
+      tongSoBo: Number(v.tongSoBo),
+      soLuongDongGoi: 0,
+      ngayGiao: v.ngayGiao.format('DD/MM/YYYY'), // Giữ định dạng này cho Table
+      deadlineDongGoi: v.deadlineDongGoi ? v.deadlineDongGoi.format('YYYY-MM-DD') : "",
+      chiTiet: list,
+      daGiao: false
+    }).then(() => {
+      setIsModalOpen(false);
+      form.resetFields();
+      message.success('Đã tạo đơn thành công!');
+    });
+  };
 
   const stats = useMemo(() => {
     const total = orders.filter(o => !o.daGiao).length;
@@ -432,155 +433,155 @@ const handleCreateOrder = (v) => {
     };
   }, [orders, searchText, dateRange]);
 
-const tableColumns = useMemo(() => (fbKey, orderData, order) => {
-  const STEPS_CONFIG = [
-    { id: 'phoi', label: 'PHÔI' },
-    { id: 'dinhHinh', label: 'ĐỊNH HÌNH' },
-    { id: 'lapRap', label: 'LẮP RÁP' },
-    { id: 'nham', label: 'NHÁM' },
-    { id: 'son', label: 'SƠN' },
-    { id: 'dongGoi', label: 'ĐÓNG GÓI' },
-  ];
+  const tableColumns = useMemo(() => (fbKey, orderData, order) => {
+    const STEPS_CONFIG = [
+      { id: 'phoi', label: 'PHÔI' },
+      { id: 'dinhHinh', label: 'ĐỊNH HÌNH' },
+      { id: 'lapRap', label: 'LẮP RÁP' },
+      { id: 'nham', label: 'NHÁM' },
+      { id: 'son', label: 'SƠN' },
+      { id: 'dongGoi', label: 'ĐÓNG GÓI' },
+    ];
 
-  // BỎ PHÂN QUYỀN: Lấy tất cả các bước để hiển thị cột
-  const visibleSteps = STEPS_CONFIG.map(s => s.id);
+    // BỎ PHÂN QUYỀN: Lấy tất cả các bước để hiển thị cột
+    const visibleSteps = STEPS_CONFIG.map(s => s.id);
 
-  // 4. Các cột cố định (Chi tiết, Cần cái, Cụm, Cần bộ)
-  const baseCols = [
-    {
-      title: 'CHI TIẾT',
-      dataIndex: 'name',
-      width: 80,
-      fixed: 'left',
-      render: (text, record) => (
-        <Flex vertical gap={0} align="start">
-          <Text strong style={{ color: '#1890ff', lineHeight: '1.2' }}>{text}</Text>
-          <Popover
-            content={
-              <List
-                size="small"
-                dataSource={record.lichSu || []}
-                renderItem={i => (
-                  <List.Item>
-                    <Text type="secondary">{i.ngay}</Text>: 
-                    <Tag color={i.sl > 0 ? "green" : "red"}>{i.sl > 0 ? `+${i.sl}` : i.sl}</Tag>
-                    <b>{i.to}</b>
-                  </List.Item>
-                )}
-              />
-            }
-            title="Nhật ký sản xuất"
-            trigger="click"
-          >
-            <Button type="link" size="small" icon={<HistoryOutlined />} style={{ padding: 0, fontSize: '11px', height: '20px' }}>
-              Lịch sử
-            </Button>
-          </Popover>
-        </Flex>
-      )
-    },
-    {
-      title: 'CẦN (CÁI)',
-      dataIndex: 'can',
-      align: 'center',
-      width: 80,
-      render: (can) => <Tag color="blue" style={{ fontWeight: 'bold' }}>{can} cái</Tag>
-    },
-    {
-      title: 'CỤM (BỘ PHẬN)',
-      dataIndex: 'groupName',
-      width: 150,
-      align: 'center',
-      onCell: (record, index) => {
-        if (!record.groupName || record.groupName.trim() === "") return { rowSpan: 1 };
-        const chiTiet = orderData?.chiTiet || [];
-        const currentGroupName = record.groupName.trim();
-        const sameGroup = chiTiet.filter(i => i.groupName && i.groupName.trim() === currentGroupName);
-        const firstIndex = chiTiet.findIndex(i => i.groupName && i.groupName.trim() === currentGroupName);
-        if (index === firstIndex) return { rowSpan: sameGroup.length };
-        return { rowSpan: 0 };
+    // 4. Các cột cố định (Chi tiết, Cần cái, Cụm, Cần bộ)
+    const baseCols = [
+      {
+        title: 'CHI TIẾT',
+        dataIndex: 'name',
+        width: 80,
+        fixed: 'left',
+        render: (text, record) => (
+          <Flex vertical gap={0} align="start">
+            <Text strong style={{ color: '#1890ff', lineHeight: '1.2' }}>{text}</Text>
+            <Popover
+              content={
+                <List
+                  size="small"
+                  dataSource={record.lichSu || []}
+                  renderItem={i => (
+                    <List.Item>
+                      <Text type="secondary">{i.ngay}</Text>:
+                      <Tag color={i.sl > 0 ? "green" : "red"}>{i.sl > 0 ? `+${i.sl}` : i.sl}</Tag>
+                      <b>{i.to}</b>
+                    </List.Item>
+                  )}
+                />
+              }
+              title="Nhật ký sản xuất"
+              trigger="click"
+            >
+              <Button type="link" size="small" icon={<HistoryOutlined />} style={{ padding: 0, fontSize: '11px', height: '20px' }}>
+                Lịch sử
+              </Button>
+            </Popover>
+          </Flex>
+        )
       },
-      render: (val) => val ? <Tag color="orange" style={{ fontWeight: 'bold' }}>{val.toUpperCase()}</Tag> : <Text type="secondary">-</Text>
-    },
-    {
-      title: 'CẦN (BỘ)',
-      align: 'center',
-      width: 80,
-      onCell: (record, index) => {
-        const ds = orderData?.chiTiet || orderData?.items || [];
-        if (!record.groupName || ds.length === 0) return { rowSpan: 1 };
-        const sameGroup = ds.filter(i => i.groupName === record.groupName);
-        const firstIndex = ds.findIndex(i => i.groupName === record.groupName);
-        if (index === firstIndex) return { rowSpan: sameGroup.length };
-        return { rowSpan: 0 };
+      {
+        title: 'CẦN (CÁI)',
+        dataIndex: 'can',
+        align: 'center',
+        width: 80,
+        render: (can) => <Tag color="blue" style={{ fontWeight: 'bold' }}>{can} cái</Tag>
       },
-      render: (_, record) => (record.groupName && record.groupName.trim() !== "") 
-        ? <Tag color="purple" style={{ fontWeight: 'bold', margin: 0 }}>{record.soBoCum || 0} bộ</Tag> 
-        : <Text type="secondary">-</Text>
-    },
-  ];
-
-  // 5. Kết hợp với các cột tổ
-  return [
-    ...baseCols,
-    ...visibleSteps.map(step => ({
-      title: step.toUpperCase(), 
-      align: 'center', 
-      width: 110,
-      onCell: (record, index) => {
-        if (['lapRap', 'nham', 'son'].includes(step) && record.groupName) {
-          const sameGroup = orderData.chiTiet.filter(i => i.groupName === record.groupName);
-          const firstIndex = orderData.chiTiet.findIndex(i => i.groupName === record.groupName);
+      {
+        title: 'CỤM (BỘ PHẬN)',
+        dataIndex: 'groupName',
+        width: 150,
+        align: 'center',
+        onCell: (record, index) => {
+          if (!record.groupName || record.groupName.trim() === "") return { rowSpan: 1 };
+          const chiTiet = orderData?.chiTiet || [];
+          const currentGroupName = record.groupName.trim();
+          const sameGroup = chiTiet.filter(i => i.groupName && i.groupName.trim() === currentGroupName);
+          const firstIndex = chiTiet.findIndex(i => i.groupName && i.groupName.trim() === currentGroupName);
           if (index === firstIndex) return { rowSpan: sameGroup.length };
           return { rowSpan: 0 };
-        }
-        return { rowSpan: 1 };
+        },
+        render: (val) => val ? <Tag color="orange" style={{ fontWeight: 'bold' }}>{val.toUpperCase()}</Tag> : <Text type="secondary">-</Text>
       },
-      render: (_, record) => {
-        const isSkipped = record.skipSteps?.includes(step);
-        if (isSkipped) return <Tag color="default" style={{ opacity: 0.5, fontSize: '10px' }}>BỎ QUA</Tag>;
+      {
+        title: 'CẦN (BỘ)',
+        align: 'center',
+        width: 80,
+        onCell: (record, index) => {
+          const ds = orderData?.chiTiet || orderData?.items || [];
+          if (!record.groupName || ds.length === 0) return { rowSpan: 1 };
+          const sameGroup = ds.filter(i => i.groupName === record.groupName);
+          const firstIndex = ds.findIndex(i => i.groupName === record.groupName);
+          if (index === firstIndex) return { rowSpan: sameGroup.length };
+          return { rowSpan: 0 };
+        },
+        render: (_, record) => (record.groupName && record.groupName.trim() !== "")
+          ? <Tag color="purple" style={{ fontWeight: 'bold', margin: 0 }}>{record.soBoCum || 0} bộ</Tag>
+          : <Text type="secondary">-</Text>
+      },
+    ];
 
-        const isGroupStep = ['lapRap', 'nham', 'son'].includes(step);
-        const targetNeed = (isGroupStep && record.groupName) ? (Number(record.soBoCum) || 0) : (Number(record.can) || 0);
-        const val = Number(record.tienDo?.[step]) || 0;
-        const remaining = targetNeed - val;
-        
-        // Render Input và thông báo thiếu/đủ
-        return (
-          <div style={{ padding: '2px' }}>
-            {isGroupStep && record.groupName && (
-              <div style={{ fontSize: '10px', color: '#d46b08', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: '4px', padding: '0 4px', marginBottom: '4px', textAlign: 'center', fontWeight: 'bold' }}>
-                {record.groupName.toUpperCase()}
+    // 5. Kết hợp với các cột tổ
+    return [
+      ...baseCols,
+      ...visibleSteps.map(step => ({
+        title: step.toUpperCase(),
+        align: 'center',
+        width: 110,
+        onCell: (record, index) => {
+          if (['lapRap', 'nham', 'son'].includes(step) && record.groupName) {
+            const sameGroup = orderData.chiTiet.filter(i => i.groupName === record.groupName);
+            const firstIndex = orderData.chiTiet.findIndex(i => i.groupName === record.groupName);
+            if (index === firstIndex) return { rowSpan: sameGroup.length };
+            return { rowSpan: 0 };
+          }
+          return { rowSpan: 1 };
+        },
+        render: (_, record) => {
+          const isSkipped = record.skipSteps?.includes(step);
+          if (isSkipped) return <Tag color="default" style={{ opacity: 0.5, fontSize: '10px' }}>BỎ QUA</Tag>;
+
+          const isGroupStep = ['lapRap', 'nham', 'son'].includes(step);
+          const targetNeed = (isGroupStep && record.groupName) ? (Number(record.soBoCum) || 0) : (Number(record.can) || 0);
+          const val = Number(record.tienDo?.[step]) || 0;
+          const remaining = targetNeed - val;
+
+          // Render Input và thông báo thiếu/đủ
+          return (
+            <div style={{ padding: '2px' }}>
+              {isGroupStep && record.groupName && (
+                <div style={{ fontSize: '10px', color: '#d46b08', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: '4px', padding: '0 4px', marginBottom: '4px', textAlign: 'center', fontWeight: 'bold' }}>
+                  {record.groupName.toUpperCase()}
+                </div>
+              )}
+              <InputNumber
+                min={0}
+                value={val}
+                onBlur={(e) => {
+                  const rawValue = e.target.value.replace(/\./g, '');
+                  const newVal = rawValue === "" ? 0 : Number(rawValue);
+                  if (newVal !== val) {
+                    if (record.groupName && isGroupStep) handleUpdateGroupRecord(fbKey, record.groupName, step, newVal);
+                    else handleUpdateRecord(fbKey, record.key, step, newVal);
+                  }
+                }}
+                style={{ width: '100%', fontWeight: (record.groupName && isGroupStep) ? 'bold' : 'normal', color: isGroupStep ? '#722ed1' : '#1890ff' }}
+              />
+              <div style={{ marginTop: '4px', textAlign: 'center' }}>
+                {remaining > 0 ? (
+                  <Text type="danger" style={{ fontSize: '11px', fontWeight: 'bold' }}>Thiếu: {remaining} {isGroupStep && record.groupName ? 'bộ' : 'cái'}</Text>
+                ) : remaining < 0 ? (
+                  <Text type="warning" style={{ fontSize: '11px', fontWeight: 'bold' }}>Thừa: {Math.abs(remaining)}</Text>
+                ) : val > 0 ? (
+                  <Tag color="success" style={{ fontSize: '10px' }}>ĐỦ</Tag>
+                ) : null}
               </div>
-            )}
-            <InputNumber
-              min={0}
-              value={val}
-              onBlur={(e) => {
-                const rawValue = e.target.value.replace(/\./g, '');
-                const newVal = rawValue === "" ? 0 : Number(rawValue);
-                if (newVal !== val) {
-                  if (record.groupName && isGroupStep) handleUpdateGroupRecord(fbKey, record.groupName, step, newVal);
-                  else handleUpdateRecord(fbKey, record.key, step, newVal);
-                }
-              }}
-              style={{ width: '100%', fontWeight: (record.groupName && isGroupStep) ? 'bold' : 'normal', color: isGroupStep ? '#722ed1' : '#1890ff' }}
-            />
-            <div style={{ marginTop: '4px', textAlign: 'center' }}>
-              {remaining > 0 ? (
-                <Text type="danger" style={{ fontSize: '11px', fontWeight: 'bold' }}>Thiếu: {remaining} {isGroupStep && record.groupName ? 'bộ' : 'cái'}</Text>
-              ) : remaining < 0 ? (
-                <Text type="warning" style={{ fontSize: '11px', fontWeight: 'bold' }}>Thừa: {Math.abs(remaining)}</Text>
-              ) : val > 0 ? (
-                <Tag color="success" style={{ fontSize: '10px' }}>ĐỦ</Tag>
-              ) : null}
             </div>
-          </div>
-        );
-      }
-    }))
-  ];
-}, [handleUpdateGroupRecord, handleUpdateRecord]); // Xóa 'user' khỏi dependency nếu không dùng tới nữa
+          );
+        }
+      }))
+    ];
+  }, [handleUpdateGroupRecord, handleUpdateRecord]); // Xóa 'user' khỏi dependency nếu không dùng tới nữa
 
 
 
@@ -986,90 +987,110 @@ const tableColumns = useMemo(() => (fbKey, orderData, order) => {
         <Col xs={12} sm={6}><Card size="small" style={{ borderTop: '4px solid #ff4d4f' }}><Statistic title="TRỄ HẠN" value={stats.overdue} styles={{ content: { color: '#ff4d4f' } }} /></Card></Col>
       </Row>
 
-      <Tabs type="card" items={[
-        {
-          key: '1', label: <b><CarryOutOutlined /> QUẢN LÝ SẢN XUẤT</b>,
-          children: (
-            <div style={{ background: '#fff', padding: '20px', borderRadius: '0 0 12px 12px' }}>
-              <Space wrap style={{ marginBottom: 20 }}>
-                <Input placeholder="Tìm tên sản phẩm..." prefix={<SearchOutlined />} style={{ width: 250 }} onChange={e => setSearchText(e.target.value)} allowClear />
-                <RangePicker format="DD/MM/YYYY" onChange={setDateRange} />
-                <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setIsModalOpen(true); }} style={{ borderRadius: 8, paddingLeft: 30, paddingRight: 30 }}>TẠO ĐƠN MỚI</Button>
-              </Space>
+      <Tabs
+        type="card"
+        items={[
+          // --- TAB 1: QUẢN LÝ SẢN XUẤT (Giữ nguyên của đại ca) ---
+          {
+            key: '1',
+            label: <b><CarryOutOutlined /> QUẢN LÝ SẢN XUẤT</b>,
+            children: (
+              <div style={{ background: '#fff', padding: '20px', borderRadius: '0 0 12px 12px' }}>
+                <Space wrap style={{ marginBottom: 20 }}>
+                  <Input placeholder="Tìm tên sản phẩm..." prefix={<SearchOutlined />} style={{ width: 250 }} onChange={e => setSearchText(e.target.value)} allowClear />
+                  <RangePicker format="DD/MM/YYYY" onChange={setDateRange} />
+                  <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setIsModalOpen(true); }} style={{ borderRadius: 8, paddingLeft: 30, paddingRight: 30 }}>TẠO ĐƠN MỚI</Button>
+                </Space>
 
-              <Tabs
-                defaultActiveKey="1"
-                items={[
-                  {
-                    key: '1',
-                    label: <Badge count={orderCategorized.dangLam.length} offset={[10, 0]}><b>ĐANG SẢN XUẤT</b></Badge>,
-                    children: renderOrderList(orderCategorized.dangLam, false, page1, setPage1)
-                  },
-                  {
-                    key: '2',
-                    label: <Badge count={orderCategorized.choGiao.length} offset={[10, 0]} color="#52c41a"><b>XONG (CHỜ GIAO)</b></Badge>,
-                    children: renderOrderList(orderCategorized.choGiao, false, page2, setPage2)
-                  },
-                  {
-                    key: '3',
-                    label: <Badge count={orderCategorized.daGiao.length} offset={[10, 0]} color="#8c8c8c"><b>ĐÃ GIAO</b></Badge>,
-                    // Truyền page3 và setPage3
-                    children: renderOrderList(orderCategorized.daGiao, true, page3, setPage3)
-                  }
-                ]}
+                <Tabs
+                  defaultActiveKey="1"
+                  items={[
+                    {
+                      key: '1',
+                      label: <Badge count={orderCategorized.dangLam.length} offset={[10, 0]}><b>ĐANG SẢN XUẤT</b></Badge>,
+                      children: renderOrderList(orderCategorized.dangLam, false, page1, setPage1)
+                    },
+                    {
+                      key: '2',
+                      label: <Badge count={orderCategorized.choGiao.length} offset={[10, 0]} color="#52c41a"><b>XONG (CHỜ GIAO)</b></Badge>,
+                      children: renderOrderList(orderCategorized.choGiao, false, page2, setPage2)
+                    },
+                    {
+                      key: '3',
+                      label: <Badge count={orderCategorized.daGiao.length} offset={[10, 0]} color="#8c8c8c"><b>ĐÃ GIAO</b></Badge>,
+                      children: renderOrderList(orderCategorized.daGiao, true, page3, setPage3)
+                    }
+                  ]}
+                />
+              </div>
+            )
+          },
+
+          // --- TAB MỚI: BÀN GIAO CÔNG ĐOẠN (Thêm vào đây) ---
+          {
+            key: 'transfer',
+            label: <b><SwapOutlined /> BÀN GIAO & XÁC NHẬN</b>,
+            children: (
+              <ProductionTransfer
+                orders={orders}
+                user={user}
+                db={db}
               />
-            </div>
-          )
-        },
-        {
-          key: '2', label: <b><HistoryOutlined /> NHẬT KÝ</b>,
-          children: (
-            <Card>
-              <Input placeholder="Tìm đơn hoặc người làm..." style={{ marginBottom: 20, width: 300 }} prefix={<SearchOutlined />} onChange={e => setSearchLog(e.target.value)} allowClear />
-              <Collapse accordion>
-                {orders.map(order => {
-                  let logs = [];
-                  order.chiTiet?.forEach(item => { item.lichSu?.forEach(log => { if (!searchLog || order.tenSP.toLowerCase().includes(searchLog.toLowerCase()) || log.userEmail.toLowerCase().includes(searchLog.toLowerCase())) logs.push({ ...log, detailName: item.name }); }); });
-                  if (logs.length === 0) return null;
-                  return (
-                    <Panel header={<Text strong>{order.tenSP} <Badge count={logs.length} style={{ backgroundColor: '#52c41a', marginLeft: 10 }} /></Text>} key={order.fbKey}>
-                      <Table
-                        dataSource={logs.sort((a, b) => b.id - a.id)}
-                        size="small"
-                        pagination={{ pageSize: 8 }}
-                        // Trong phần Table của Nhật ký (Tabs key 2)
-                        columns={[
-                          { title: 'Thời gian', dataIndex: 'ngay', width: 130 },
-                          { title: 'Chi tiết', dataIndex: 'detailName' },
-                          { title: 'Tổ', dataIndex: 'to', render: t => <Tag color="blue">{t}</Tag> },
-                          {
-                            title: 'SỐ LƯỢNG CHỐT',
-                            dataIndex: 'sl',
-                            render: (s, record) => (
-                              <Space>
-                                <Text strong style={{ color: '#1890ff' }}>{s}</Text>
-                                <Text type="secondary" style={{ fontSize: '11px' }}>
-                                  ({record.chenhLech > 0 ? `+${record.chenhLech}` : record.chenhLech})
-                                </Text>
-                              </Space>
-                            )
-                          },
-                          { title: 'Người làm', dataIndex: 'userEmail', render: e => <Text type="secondary">{e.split('@')[0]}</Text> },
-                          {
-                            title: 'Tình trạng',
-                            dataIndex: 'tre',
-                            render: (t) => t > 0 ? <Tag color="error">Trễ {t} ngày</Tag> : <Tag color="success">Đúng hạn</Tag>
-                          }
-                        ]}
-                      />
-                    </Panel>
-                  );
-                })}
-              </Collapse>
-            </Card>
-          )
-        }
-      ]} />
+            )
+          },
+
+          // --- TAB 2 (Cũ): NHẬT KÝ (Giữ nguyên của đại ca) ---
+          {
+            key: '2',
+            label: <b><HistoryOutlined /> NHẬT KÝ</b>,
+            children: (
+              <Card>
+                <Input placeholder="Tìm đơn hoặc người làm..." style={{ marginBottom: 20, width: 300 }} prefix={<SearchOutlined />} onChange={e => setSearchLog(e.target.value)} allowClear />
+                <Collapse accordion>
+                  {/* ... Giữ nguyên phần nội dung orders.map của đại ca ở đây ... */}
+                  {orders.map(order => {
+                    let logs = [];
+                    order.chiTiet?.forEach(item => { item.lichSu?.forEach(log => { if (!searchLog || order.tenSP.toLowerCase().includes(searchLog.toLowerCase()) || log.userEmail.toLowerCase().includes(searchLog.toLowerCase())) logs.push({ ...log, detailName: item.name }); }); });
+                    if (logs.length === 0) return null;
+                    return (
+                      <Panel header={<Text strong>{order.tenSP} <Badge count={logs.length} style={{ backgroundColor: '#52c41a', marginLeft: 10 }} /></Text>} key={order.fbKey}>
+                        <Table
+                          dataSource={logs.sort((a, b) => b.id - a.id)}
+                          size="small"
+                          pagination={{ pageSize: 8 }}
+                          columns={[
+                            { title: 'Thời gian', dataIndex: 'ngay', width: 130 },
+                            { title: 'Chi tiết', dataIndex: 'detailName' },
+                            { title: 'Tổ', dataIndex: 'to', render: t => <Tag color="blue">{t}</Tag> },
+                            {
+                              title: 'SỐ LƯỢNG CHỐT',
+                              dataIndex: 'sl',
+                              render: (s, record) => (
+                                <Space>
+                                  <Text strong style={{ color: '#1890ff' }}>{s}</Text>
+                                  <Text type="secondary" style={{ fontSize: '11px' }}>
+                                    ({record.chenhLech > 0 ? `+${record.chenhLech}` : record.chenhLech})
+                                  </Text>
+                                </Space>
+                              )
+                            },
+                            { title: 'Người làm', dataIndex: 'userEmail', render: e => <Text type="secondary">{e.split('@')[0]}</Text> },
+                            {
+                              title: 'Tình trạng',
+                              dataIndex: 'tre',
+                              render: (t) => t > 0 ? <Tag color="error">Trễ {t} ngày</Tag> : <Tag color="success">Đúng hạn</Tag>
+                            }
+                          ]}
+                        />
+                      </Panel>
+                    );
+                  })}
+                </Collapse>
+              </Card>
+            )
+          },
+        ]}
+      />
 
       <Modal
         title={isModalOpen ? "TẠO ĐƠN MỚI" : "CHỈNH SỬA ĐƠN HÀNG"}
