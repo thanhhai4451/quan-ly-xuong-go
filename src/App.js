@@ -433,28 +433,24 @@ const handleCreateOrder = (v) => {
   }, [orders, searchText, dateRange]);
 
 const tableColumns = useMemo(() => (fbKey, orderData, order) => {
-
   const STEPS_CONFIG = [
-    { id: 'phoi', label: 'PHÔI', emails: ['sinhnguyen@gmail.com'] },
-    { id: 'dinhHinh', label: 'ĐỊNH HÌNH', emails: ['chaunho@gmail.com', 'chuthoi@gmail.com', 'chaulon@gmail.com', 'thoidinhhinh@gmail.com'] },
-    { id: 'nham', label: 'NHÁM', emails: ['phanvantang@gmail.com'] },
-    { id: 'lapRap', label: 'LẮP RÁP', emails: ['cubi@gmail.com'] },
-    { id: 'son', label: 'SƠN', emails: ['canhnguyen@gmail.com'] },
-    { id: 'dongGoi', label: 'ĐÓNG GÓI', emails: ['hongyen@gmail.com'] },
+    { id: 'phoi', label: 'PHÔI' },
+    { id: 'dinhHinh', label: 'ĐỊNH HÌNH' },
+    { id: 'nham', label: 'NHÁM' },
+    { id: 'lapRap', label: 'LẮP RÁP' },
+    { id: 'son', label: 'SƠN' },
+    { id: 'dongGoi', label: 'ĐÓNG GÓI' },
   ];
 
-  const isAdmin = ['mah@gmail.com', 'haittpc08155@gmail.com'].includes(user?.email);
-  
-  const visibleSteps = isAdmin 
-    ? ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'] // Admin thấy hết
-    : STEPS_CONFIG.filter(s => s.emails.includes(user?.email)).map(s => s.id); // Thợ thấy 1 tổ
+  // BỎ PHÂN QUYỀN: Lấy tất cả các bước để hiển thị cột
+  const visibleSteps = STEPS_CONFIG.map(s => s.id);
 
   // 4. Các cột cố định (Chi tiết, Cần cái, Cụm, Cần bộ)
   const baseCols = [
     {
       title: 'CHI TIẾT',
       dataIndex: 'name',
-      width: 20,
+      width: 80,
       fixed: 'left',
       render: (text, record) => (
         <Flex vertical gap={0} align="start">
@@ -487,13 +483,13 @@ const tableColumns = useMemo(() => (fbKey, orderData, order) => {
       title: 'CẦN (CÁI)',
       dataIndex: 'can',
       align: 'center',
-      width: 20,
+      width: 80,
       render: (can) => <Tag color="blue" style={{ fontWeight: 'bold' }}>{can} cái</Tag>
     },
     {
       title: 'CỤM (BỘ PHẬN)',
       dataIndex: 'groupName',
-      width: 30,
+      width: 150,
       align: 'center',
       onCell: (record, index) => {
         if (!record.groupName || record.groupName.trim() === "") return { rowSpan: 1 };
@@ -509,7 +505,7 @@ const tableColumns = useMemo(() => (fbKey, orderData, order) => {
     {
       title: 'CẦN (BỘ)',
       align: 'center',
-      width: 30,
+      width: 80,
       onCell: (record, index) => {
         const ds = orderData?.chiTiet || orderData?.items || [];
         if (!record.groupName || ds.length === 0) return { rowSpan: 1 };
@@ -524,12 +520,13 @@ const tableColumns = useMemo(() => (fbKey, orderData, order) => {
     },
   ];
 
+  // 5. Kết hợp với các cột tổ
   return [
     ...baseCols,
     ...visibleSteps.map(step => ({
       title: step.toUpperCase(), 
       align: 'center', 
-      width: 50,
+      width: 110,
       onCell: (record, index) => {
         if (['lapRap', 'nham', 'son'].includes(step) && record.groupName) {
           const sameGroup = orderData.chiTiet.filter(i => i.groupName === record.groupName);
@@ -547,10 +544,8 @@ const tableColumns = useMemo(() => (fbKey, orderData, order) => {
         const targetNeed = (isGroupStep && record.groupName) ? (Number(record.soBoCum) || 0) : (Number(record.can) || 0);
         const val = Number(record.tienDo?.[step]) || 0;
         const remaining = targetNeed - val;
-        const deadlineDate = record.deadlines?.[step];
-        const ngayDeadline = deadlineDate ? dayjs(deadlineDate) : null;
-        const isOverdue = ngayDeadline && val < targetNeed && dayjs().startOf('day').isAfter(ngayDeadline);
-
+        
+        // Render Input và thông báo thiếu/đủ
         return (
           <div style={{ padding: '2px' }}>
             {isGroupStep && record.groupName && (
@@ -561,7 +556,6 @@ const tableColumns = useMemo(() => (fbKey, orderData, order) => {
             <InputNumber
               min={0}
               value={val}
-              status={isOverdue ? "error" : (val > targetNeed ? "warning" : "")}
               onBlur={(e) => {
                 const rawValue = e.target.value.replace(/\./g, '');
                 const newVal = rawValue === "" ? 0 : Number(rawValue);
@@ -586,7 +580,7 @@ const tableColumns = useMemo(() => (fbKey, orderData, order) => {
       }
     }))
   ];
-}, [handleUpdateGroupRecord, handleUpdateRecord, user]); // Nhớ thêm `user` vào dependency của useMemo
+}, [handleUpdateGroupRecord, handleUpdateRecord]); // Xóa 'user' khỏi dependency nếu không dùng tới nữa
 
 
 
@@ -665,7 +659,7 @@ const tableColumns = useMemo(() => (fbKey, orderData, order) => {
               dataSource={order.chiTiet}
               pagination={false}
               bordered
-              scroll={{ x: 1400 }}
+              scroll={{ x: 500 }}
               size="middle"
               // Đảm bảo rowKey chuẩn để Ant Design không render nhầm hàng
               rowKey={(record) => record.key || record.name}
