@@ -436,8 +436,8 @@ const tableColumns = useMemo(() => (fbKey, orderData, order) => {
   const STEPS_CONFIG = [
     { id: 'phoi', label: 'PHÔI' },
     { id: 'dinhHinh', label: 'ĐỊNH HÌNH' },
-    { id: 'nham', label: 'NHÁM' },
     { id: 'lapRap', label: 'LẮP RÁP' },
+    { id: 'nham', label: 'NHÁM' },
     { id: 'son', label: 'SƠN' },
     { id: 'dongGoi', label: 'ĐÓNG GÓI' },
   ];
