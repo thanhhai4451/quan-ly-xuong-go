@@ -43,7 +43,7 @@ const App = () => {
 
   // 1. Khai báo 3 biến trang cho 3 Tab (Page 1, 2, 3)
   const [page1, setPage1] = useState(1);
-  const [page2, setPage2] = useState(1);
+  const [page2, setPage2] = useState(1); 
   const [page3, setPage3] = useState(1);
 
   const pageSize = 10;
@@ -166,6 +166,8 @@ const App = () => {
     const daDongGoi = Number(order.soLuongDongGoi) || 0;
     return Math.min(100, Math.round((daDongGoi / tongBo) * 100));
   };
+
+  
 
   // --- DÙNG USECALLBACK ĐỂ HÀM KHÔNG BỊ TẠO LẠI KHI RENDER ---
   const handleUpdateGroupRecord = useCallback((fbKey, groupName, to, value) => {
@@ -430,11 +432,29 @@ const handleCreateOrder = (v) => {
     };
   }, [orders, searchText, dateRange]);
 
-  const tableColumns = useMemo(() => (fbKey, orderData, order) => [
+const tableColumns = useMemo(() => (fbKey, orderData, order) => {
+
+  const STEPS_CONFIG = [
+    { id: 'phoi', label: 'PHÔI', emails: ['sinhnguyen@gmail.com'] },
+    { id: 'dinhHinh', label: 'ĐỊNH HÌNH', emails: ['chaunho@gmail.com', 'chuthoi@gmail.com', 'chaulon@gmail.com', 'thoidinhhinh@gmail.com'] },
+    { id: 'nham', label: 'NHÁM', emails: ['phanvantang@gmail.com'] },
+    { id: 'lapRap', label: 'LẮP RÁP', emails: ['cubi@gmail.com'] },
+    { id: 'son', label: 'SƠN', emails: ['canhnguyen@gmail.com'] },
+    { id: 'dongGoi', label: 'ĐÓNG GÓI', emails: ['hongyen@gmail.com'] },
+  ];
+
+  const isAdmin = ['mah@gmail.com', 'haittpc08155@gmail.com'].includes(user?.email);
+  
+  const visibleSteps = isAdmin 
+    ? ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'] // Admin thấy hết
+    : STEPS_CONFIG.filter(s => s.emails.includes(user?.email)).map(s => s.id); // Thợ thấy 1 tổ
+
+  // 4. Các cột cố định (Chi tiết, Cần cái, Cụm, Cần bộ)
+  const baseCols = [
     {
       title: 'CHI TIẾT',
       dataIndex: 'name',
-      width: 120,
+      width: 20,
       fixed: 'left',
       render: (text, record) => (
         <Flex vertical gap={0} align="start">
@@ -446,7 +466,7 @@ const handleCreateOrder = (v) => {
                 dataSource={record.lichSu || []}
                 renderItem={i => (
                   <List.Item>
-                    <Text type="secondary">{i.ngay}</Text>:
+                    <Text type="secondary">{i.ngay}</Text>: 
                     <Tag color={i.sl > 0 ? "green" : "red"}>{i.sl > 0 ? `+${i.sl}` : i.sl}</Tag>
                     <b>{i.to}</b>
                   </List.Item>
@@ -456,12 +476,7 @@ const handleCreateOrder = (v) => {
             title="Nhật ký sản xuất"
             trigger="click"
           >
-            <Button
-              type="link"
-              size="small"
-              icon={<HistoryOutlined />}
-              style={{ padding: 0, fontSize: '11px', height: '20px' }}
-            >
+            <Button type="link" size="small" icon={<HistoryOutlined />} style={{ padding: 0, fontSize: '11px', height: '20px' }}>
               Lịch sử
             </Button>
           </Popover>
@@ -472,65 +487,49 @@ const handleCreateOrder = (v) => {
       title: 'CẦN (CÁI)',
       dataIndex: 'can',
       align: 'center',
-      width: 90,
+      width: 20,
       render: (can) => <Tag color="blue" style={{ fontWeight: 'bold' }}>{can} cái</Tag>
     },
-
     {
       title: 'CỤM (BỘ PHẬN)',
       dataIndex: 'groupName',
-      width: 120,
+      width: 30,
       align: 'center',
       onCell: (record, index) => {
-        if (!record.groupName || record.groupName.trim() === "") {
-          return { rowSpan: 1 }; // Hiện bình thường, không gộp
-        }
-
+        if (!record.groupName || record.groupName.trim() === "") return { rowSpan: 1 };
         const chiTiet = orderData?.chiTiet || [];
         const currentGroupName = record.groupName.trim();
-
-        // Tìm những thằng có cùng tên cụm
         const sameGroup = chiTiet.filter(i => i.groupName && i.groupName.trim() === currentGroupName);
-        // Tìm vị trí đầu tiên của cụm này trong danh sách
         const firstIndex = chiTiet.findIndex(i => i.groupName && i.groupName.trim() === currentGroupName);
-
-        if (index === firstIndex) {
-          return { rowSpan: sameGroup.length }; // Thằng đầu tiên giữ chỗ cho cả nhóm
-        }
-        return { rowSpan: 0 }; // Thằng sau thì ẩn đi
+        if (index === firstIndex) return { rowSpan: sameGroup.length };
+        return { rowSpan: 0 };
       },
       render: (val) => val ? <Tag color="orange" style={{ fontWeight: 'bold' }}>{val.toUpperCase()}</Tag> : <Text type="secondary">-</Text>
     },
     {
       title: 'CẦN (BỘ)',
       align: 'center',
-      width: 90,
+      width: 30,
       onCell: (record, index) => {
-        // Kiểm tra nếu không có chi tiết hoặc không có groupName thì không gộp
         const ds = orderData?.chiTiet || orderData?.items || [];
         if (!record.groupName || ds.length === 0) return { rowSpan: 1 };
-
         const sameGroup = ds.filter(i => i.groupName === record.groupName);
         const firstIndex = ds.findIndex(i => i.groupName === record.groupName);
-
         if (index === firstIndex) return { rowSpan: sameGroup.length };
         return { rowSpan: 0 };
       },
-      render: (_, record) => {
-        // SỬA TẠI ĐÂY: Hiển thị soBoCum thay vì tongSoBo
-        if (record.groupName && record.groupName.trim() !== "") {
-          return (
-            <Tag color="purple" style={{ fontWeight: 'bold', margin: 0 }}>
-              {/* Mày phải dùng record.soBoCum thì nó mới hiện con số mày vừa gõ trong Form */}
-              {record.soBoCum || 0} bộ
-            </Tag>
-          );
-        }
-        return <Text type="secondary">-</Text>;
-      }
+      render: (_, record) => (record.groupName && record.groupName.trim() !== "") 
+        ? <Tag color="purple" style={{ fontWeight: 'bold', margin: 0 }}>{record.soBoCum || 0} bộ</Tag> 
+        : <Text type="secondary">-</Text>
     },
-    ...['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'].map(step => ({
-      title: step.toUpperCase(), align: 'center', width: 110,
+  ];
+
+  return [
+    ...baseCols,
+    ...visibleSteps.map(step => ({
+      title: step.toUpperCase(), 
+      align: 'center', 
+      width: 50,
       onCell: (record, index) => {
         if (['lapRap', 'nham', 'son'].includes(step) && record.groupName) {
           const sameGroup = orderData.chiTiet.filter(i => i.groupName === record.groupName);
@@ -545,42 +544,20 @@ const handleCreateOrder = (v) => {
         if (isSkipped) return <Tag color="default" style={{ opacity: 0.5, fontSize: '10px' }}>BỎ QUA</Tag>;
 
         const isGroupStep = ['lapRap', 'nham', 'son'].includes(step);
-
-        // Đích cần đạt: Tổ bộ so với soBoCum, tổ lẻ so với can
-        const targetNeed = (isGroupStep && record.groupName)
-          ? (Number(record.soBoCum) || 0)
-          : (Number(record.can) || 0);
-
+        const targetNeed = (isGroupStep && record.groupName) ? (Number(record.soBoCum) || 0) : (Number(record.can) || 0);
         const val = Number(record.tienDo?.[step]) || 0;
         const remaining = targetNeed - val;
-
         const deadlineDate = record.deadlines?.[step];
-        const homNay = dayjs().startOf('day');
         const ngayDeadline = deadlineDate ? dayjs(deadlineDate) : null;
-        const isOverdue = ngayDeadline && val < targetNeed && homNay.isAfter(ngayDeadline);
+        const isOverdue = ngayDeadline && val < targetNeed && dayjs().startOf('day').isAfter(ngayDeadline);
 
         return (
           <div style={{ padding: '2px' }}>
-            {/* NHÃN TÊN CỤM CHO MOBILE: Xuất hiện phía trên ô nhập của các tổ bộ */}
             {isGroupStep && record.groupName && (
-              <div style={{
-                fontSize: '10px',
-                color: '#d46b08',
-                background: '#fff7e6',
-                border: '1px solid #ffd591',
-                borderRadius: '4px',
-                padding: '0 4px',
-                marginBottom: '4px',
-                textAlign: 'center',
-                fontWeight: 'bold',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}>
+              <div style={{ fontSize: '10px', color: '#d46b08', background: '#fff7e6', border: '1px solid #ffd591', borderRadius: '4px', padding: '0 4px', marginBottom: '4px', textAlign: 'center', fontWeight: 'bold' }}>
                 {record.groupName.toUpperCase()}
               </div>
             )}
-
             <InputNumber
               min={0}
               value={val}
@@ -589,44 +566,27 @@ const handleCreateOrder = (v) => {
                 const rawValue = e.target.value.replace(/\./g, '');
                 const newVal = rawValue === "" ? 0 : Number(rawValue);
                 if (newVal !== val) {
-                  if (record.groupName && isGroupStep) {
-                    handleUpdateGroupRecord(fbKey, record.groupName, step, newVal);
-                  } else {
-                    handleUpdateRecord(fbKey, record.key, step, newVal);
-                  }
+                  if (record.groupName && isGroupStep) handleUpdateGroupRecord(fbKey, record.groupName, step, newVal);
+                  else handleUpdateRecord(fbKey, record.key, step, newVal);
                 }
               }}
-              style={{
-                width: '100%',
-                fontWeight: (record.groupName && isGroupStep) ? 'bold' : 'normal',
-                color: isGroupStep ? '#722ed1' : '#1890ff'
-              }}
+              style={{ width: '100%', fontWeight: (record.groupName && isGroupStep) ? 'bold' : 'normal', color: isGroupStep ? '#722ed1' : '#1890ff' }}
             />
-
             <div style={{ marginTop: '4px', textAlign: 'center' }}>
               {remaining > 0 ? (
-                <Text type="danger" style={{ fontSize: '11px', fontWeight: 'bold' }}>
-                  Thiếu: {remaining} {isGroupStep && record.groupName ? 'bộ' : 'cái'}
-                </Text>
+                <Text type="danger" style={{ fontSize: '11px', fontWeight: 'bold' }}>Thiếu: {remaining} {isGroupStep && record.groupName ? 'bộ' : 'cái'}</Text>
               ) : remaining < 0 ? (
-                <Text type="warning" style={{ fontSize: '11px', fontWeight: 'bold' }}>
-                  Thừa: {Math.abs(remaining)} {isGroupStep && record.groupName ? 'bộ' : 'cái'}
-                </Text>
+                <Text type="warning" style={{ fontSize: '11px', fontWeight: 'bold' }}>Thừa: {Math.abs(remaining)}</Text>
               ) : val > 0 ? (
-                <Tag color="success" style={{ fontSize: '10px', margin: 0, padding: '0 4px' }}>ĐỦ</Tag>
+                <Tag color="success" style={{ fontSize: '10px' }}>ĐỦ</Tag>
               ) : null}
             </div>
-
-            {ngayDeadline && val < targetNeed && (
-              <div style={{ fontSize: '10px', color: isOverdue ? '#f5222d' : '#8c8c8c', marginTop: '2px' }}>
-                Hạn: {ngayDeadline.format('DD/MM')}
-              </div>
-            )}
           </div>
-        )
+        );
       }
-    })),
-  ], [handleUpdateGroupRecord, handleUpdateRecord]);
+    }))
+  ];
+}, [handleUpdateGroupRecord, handleUpdateRecord, user]); // Nhớ thêm `user` vào dependency của useMemo
 
 
 
