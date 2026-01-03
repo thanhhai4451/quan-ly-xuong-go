@@ -10,7 +10,7 @@ import {
   CarryOutOutlined, SearchOutlined, HistoryOutlined, AlertOutlined, AppstoreOutlined,
   UserOutlined, LogoutOutlined, LockOutlined, EditOutlined, BellOutlined, CheckCircleOutlined,
   SendOutlined, CalendarOutlined, SwapOutlined
-  
+
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
@@ -328,7 +328,7 @@ const App = () => {
 
   const handleUpdateOrder = async (values) => {
     try {
-      const cleanedItems = values.items.map(it => {
+      const cleanedItems = values.items.map((it, index) => {
         const safeDeadlines = {};
         const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'];
 
@@ -341,48 +341,74 @@ const App = () => {
           }
         });
 
+        // Tạo một object linh kiện sạch sẽ
         return {
-          ...it,
-          can: it.qty, // ĐƯA SỐ LƯỢNG MỚI TỪ FORM (qty) VÀO BIẾN FIREBASE (can)
+          // 1. Đảm bảo KEY không bao giờ undefined
+          // Nếu it.key không có, dùng ID dựa trên thời gian + index để duy nhất
+          key: it.key || `item_${Date.now()}_${index}`,
+
+          name: it.name || "Linh kiện không tên",
+          qty: it.qty || 0,
+          can: it.qty || 0,
           groupName: (it.groupName || "").trim(),
           soBoCum: it.soBoCum || 0,
           deadlines: safeDeadlines,
           skipSteps: Array.isArray(it.skipSteps) ? it.skipSteps : [],
-          // Giữ lại tiến độ và lịch sử cũ nếu có
+
+          // Giữ lại tiến độ và lịch sử cũ, đảm bảo không undefined
           tienDo: it.tienDo || { phoi: 0, dinhHinh: 0, lapRap: 0, nham: 0, son: 0, dongGoi: 0 },
           lichSu: it.lichSu || []
         };
       });
 
       const finalData = {
-        ...values,
+        tenSP: values.tenSP || "",
+        tongSoBo: values.tongSoBo || 0,
         chiTiet: cleanedItems,
         deadlineDongGoi: values.deadlineDongGoi?.format?.('YYYY-MM-DD') || "",
         ngayGiao: values.ngayGiao?.format?.('DD/MM/YYYY') || ""
       };
 
-      delete finalData.items;
+      // Đảm bảo fbKey tồn tại trước khi update
+      if (!editingOrder?.fbKey) {
+        throw new Error("Không tìm thấy mã đơn hàng (fbKey) để cập nhật!");
+      }
 
       await update(ref(db, `orders/${editingOrder.fbKey}`), finalData);
-      message.success("Đã cập nhật số lượng và checkbox thành công!");
+
+      message.success("Đã cập nhật đơn hàng thành công!");
       setIsEditModalOpen(false);
     } catch (error) {
+      console.error("Lỗi Firebase Update:", error);
       message.error("Lỗi: " + error.message);
     }
   };
 
-  const handleCreateOrder = (v) => {
+const handleCreateOrder = (v) => {
+  try {
+    // 1. Kiểm tra nếu chưa thêm linh kiện nào
+    if (!v.items || v.items.length === 0) {
+      message.error("Đại ca ơi, phải thêm ít nhất 1 linh kiện mới lưu được!");
+      return;
+    }
+
     const list = v.items.map((it, i) => {
       const formattedDeadlines = {};
-      if (it.deadlines) {
-        Object.keys(it.deadlines).forEach(step => {
-          formattedDeadlines[step] = it.deadlines[step] ? it.deadlines[step].format('YYYY-MM-DD') : "";
-        });
-      }
+      const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'];
+
+      // Duyệt qua các bước để lấy ngày, tránh lỗi undefined
+      steps.forEach(step => {
+        const dateVal = it.deadlines?.[step];
+        formattedDeadlines[step] = (dateVal && typeof dateVal.format === 'function') 
+          ? dateVal.format('YYYY-MM-DD') 
+          : "";
+      });
+
       return {
         key: Date.now() + i,
-        name: it.name,
-        can: it.qty, // LƯU VÀO BIẾN 'can'
+        name: it.name || "Linh kiện không tên",
+        can: Number(it.qty) || 0, // Đảm bảo là số
+        qty: Number(it.qty) || 0, // Lưu cả qty để đồng bộ AntD Form
         groupName: (it.groupName || "").trim(),
         soBoCum: it.soBoCum || 0,
         skipSteps: Array.isArray(it.skipSteps) ? it.skipSteps : [],
@@ -392,20 +418,31 @@ const App = () => {
       };
     });
 
+    // 2. Đẩy dữ liệu lên Firebase
     push(ref(db, 'orders/'), {
-      tenSP: v.tenSP.toUpperCase(),
-      tongSoBo: Number(v.tongSoBo),
+      tenSP: (v.tenSP || "").toUpperCase(),
+      tongSoBo: Number(v.tongSoBo) || 0,
       soLuongDongGoi: 0,
-      ngayGiao: v.ngayGiao.format('DD/MM/YYYY'), // Giữ định dạng này cho Table
+      ngayGiao: v.ngayGiao ? v.ngayGiao.format('DD/MM/YYYY') : "",
       deadlineDongGoi: v.deadlineDongGoi ? v.deadlineDongGoi.format('YYYY-MM-DD') : "",
       chiTiet: list,
-      daGiao: false
-    }).then(() => {
+      daGiao: false,
+      createdAt: new Date().toISOString() // Lưu thêm ngày tạo để dễ sắp xếp
+    })
+    .then(() => {
       setIsModalOpen(false);
       form.resetFields();
-      message.success('Đã tạo đơn thành công!');
+      message.success('Đã tạo đơn thành công cho đại ca!');
+    })
+    .catch((err) => {
+      message.error("Lỗi Firebase: " + err.message);
     });
-  };
+
+  } catch (error) {
+    console.error("Lỗi crash code:", error);
+    message.error("Lỗi hệ thống: " + error.message);
+  }
+};
 
   const stats = useMemo(() => {
     const total = orders.filter(o => !o.daGiao).length;
@@ -1095,13 +1132,22 @@ const App = () => {
       <Modal
         title={isModalOpen ? "TẠO ĐƠN MỚI" : "CHỈNH SỬA ĐƠN HÀNG"}
         open={isModalOpen || isEditModalOpen}
+        forceRender
         onOk={() => isModalOpen ? form.submit() : editForm.submit()}
         onCancel={() => { setIsModalOpen(false); setIsEditModalOpen(false); }}
         width="90%"
         okText="LƯU DỮ LIỆU"
         cancelText="HỦY"
       >
-        <Form form={isModalOpen ? form : editForm} layout="vertical" onFinish={isModalOpen ? handleCreateOrder : handleUpdateOrder}>
+        <Form form={isModalOpen ? form : editForm} layout="vertical" onFinish={isModalOpen ? handleCreateOrder : handleUpdateOrder
+
+          
+        }
+        
+        onFinishFailed={(errorInfo) => {
+    console.log('Lỗi nhập liệu:', errorInfo);
+    message.error("Vui lòng kiểm tra lại các ô màu đỏ!");
+  }}>
           <Row gutter={16}>
             <Col span={10}>
               <Form.Item name="tenSP" label="Tên sản phẩm" rules={[{ required: true, message: 'Nhập tên SP' }]}><Input placeholder="Ví dụ: TỦ GỖ SỒI" /></Form.Item>
@@ -1132,7 +1178,7 @@ const App = () => {
                       boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
                       borderLeft: '4px solid #1890ff' // Vạch màu xanh bên trái cho chuyên nghiệp
                     }}
-                    bodyStyle={{ padding: '12px 20px' }}
+                    styles={{ body: { padding: '12px 20px' } }} // Cách viết mới
                   >
                     {/* HÀNG 1: THÔNG TIN CHÍNH */}
                     <Row gutter={16} align="bottom">
