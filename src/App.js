@@ -3,13 +3,15 @@ import {
   Table, Tag, Progress, Card, Typography, Collapse,
   InputNumber, Space, Button, Modal, Form, Input,
   DatePicker, message, List, Popover, Row, Col,
-  Statistic, Tabs, Badge, Avatar, Checkbox, Pagination, Flex, Divider
+  Statistic, Tabs, Badge, Avatar, Pagination, Flex
 } from 'antd';
+
+
 import {
   PlusOutlined, DeleteOutlined, BuildOutlined, ClockCircleOutlined,
   CarryOutOutlined, SearchOutlined, HistoryOutlined, AlertOutlined, AppstoreOutlined,
   UserOutlined, LogoutOutlined, LockOutlined, EditOutlined, BellOutlined, CheckCircleOutlined,
-  SendOutlined, CalendarOutlined, SwapOutlined
+  SendOutlined, SwapOutlined
 
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -18,6 +20,7 @@ import { db, auth } from "./firebase";
 import { ref, push, onValue, remove, update } from "firebase/database";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import ProductionTransfer from './ProductionTransfer'; // Lưu ý: để chung thư mục với App.js
+import OrderForm from './OrderForm'; // Import cái file vừa tạo
 const { Panel } = Collapse;
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -47,23 +50,23 @@ const App = () => {
   const [page2, setPage2] = useState(1);
   const [page3, setPage3] = useState(1);
 
-  const pageSize = 10;
 
+  const pageSize = 10;
 
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState(null);
   const [searchText, setSearchText] = useState('');
   const [searchLog, setSearchLog] = useState('');
   const [dateRange, setDateRange] = useState(null);
   const [form] = Form.useForm();
-  const [editForm] = Form.useForm();
   const [loginForm] = Form.useForm();
 
   const [realtimeNotis, setRealtimeNotis] = useState([]);
+  const isAdmin = user?.email === 'admin@gmail.com';
+
 
 
   useEffect(() => {
@@ -169,6 +172,31 @@ const App = () => {
   };
 
 
+
+  // Hàm mở Modal Sửa (đại ca đã có openEditModal, chỉ cần đổi state)
+  const openEditModal = (order) => {
+    setEditingOrder(order); // Lưu đơn vào state để đối chiếu sau này
+
+    // Chuẩn bị dữ liệu nạp vào Form
+    const initialItems = (order.chiTiet || []).map(item => ({
+      ...item,
+      key: item.key, // QUAN TRỌNG: Phải giữ lại key cũ này
+      qty: item.can, // Đổ số lượng 'can' vào ô 'qty' của form
+      deadlines: Object.keys(item.deadlines || {}).reduce((acc, step) => {
+        if (item.deadlines[step]) acc[step] = dayjs(item.deadlines[step]);
+        return acc;
+      }, {})
+    }));
+
+    form.setFieldsValue({
+      ...order,
+      ngayGiao: dayjs(order.ngayGiao, 'DD/MM/YYYY'),
+      deadlineDongGoi: order.deadlineDongGoi ? dayjs(order.deadlineDongGoi) : null,
+      items: initialItems
+    });
+
+    setIsModalOpen(true);
+  };
 
   // --- DÙNG USECALLBACK ĐỂ HÀM KHÔNG BỊ TẠO LẠI KHI RENDER ---
   const handleUpdateGroupRecord = useCallback((fbKey, groupName, to, value) => {
@@ -299,151 +327,123 @@ const App = () => {
   };
 
 
-
-  const openEditModal = (order) => {
-    setEditingOrder(order);
-    const initialItems = (order.chiTiet || []).map(item => {
-      const deadlines = {};
-      if (item.deadlines) {
-        Object.keys(item.deadlines).forEach(step => {
-          if (item.deadlines[step]) deadlines[step] = dayjs(item.deadlines[step]);
-        });
-      }
-      return {
-        ...item,
-        qty: item.can, // LẤY TỪ 'can' CỦA FIREBASE ĐỔ VÀO 'qty' CỦA FORM
-        skipSteps: Array.isArray(item.skipSteps) ? item.skipSteps : [],
-        deadlines: deadlines
-      };
-    });
-
-    editForm.setFieldsValue({
-      ...order,
-      ngayGiao: dayjs(order.ngayGiao, 'DD/MM/YYYY'),
-      deadlineDongGoi: order.deadlineDongGoi ? dayjs(order.deadlineDongGoi) : null,
-      items: initialItems
-    });
-    setIsEditModalOpen(true);
-  };
-
   const handleUpdateOrder = async (values) => {
     try {
       const cleanedItems = values.items.map((it, index) => {
-        const safeDeadlines = {};
-        const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'];
+        // 1. Tìm linh kiện cũ trong 'editingOrder'
+        // Ưu tiên tìm theo key, nếu không thấy thì tìm theo tên cũ
+        const oldItem = editingOrder.chiTiet?.find(old =>
+          (old.key && old.key === it.key) || (old.name === it.name)
+        );
 
-        steps.forEach(step => {
-          const val = it.deadlines?.[step];
-          if (val && typeof val.format === 'function') {
-            safeDeadlines[step] = val.format('YYYY-MM-DD');
-          } else {
-            safeDeadlines[step] = (typeof val === 'string') ? val : "";
-          }
-        });
+        // 2. Nếu tìm thấy, lấy lại tiến độ. Nếu không thấy, báo lỗi hoặc cho về 0
+        const preservedTienDo = oldItem ? oldItem.tienDo : { phoi: 0, dinhHinh: 0, lapRap: 0, nham: 0, son: 0, dongGoi: 0 };
+        const preservedLichSu = oldItem ? (oldItem.lichSu || []) : [];
 
-        // Tạo một object linh kiện sạch sẽ
         return {
-          // 1. Đảm bảo KEY không bao giờ undefined
-          // Nếu it.key không có, dùng ID dựa trên thời gian + index để duy nhất
-          key: it.key || `item_${Date.now()}_${index}`,
-
-          name: it.name || "Linh kiện không tên",
-          qty: it.qty || 0,
-          can: it.qty || 0,
+          key: it.key || oldItem?.key || `item_${Date.now()}_${index}`, // Giữ key cũ
+          name: it.name,
+          can: Number(it.qty) || 0,
           groupName: (it.groupName || "").trim(),
           soBoCum: it.soBoCum || 0,
-          deadlines: safeDeadlines,
           skipSteps: Array.isArray(it.skipSteps) ? it.skipSteps : [],
-
-          // Giữ lại tiến độ và lịch sử cũ, đảm bảo không undefined
-          tienDo: it.tienDo || { phoi: 0, dinhHinh: 0, lapRap: 0, nham: 0, son: 0, dongGoi: 0 },
-          lichSu: it.lichSu || []
+          deadlines: Object.keys(it.deadlines || {}).reduce((acc, step) => {
+            const d = it.deadlines?.[step];
+            acc[step] = (d && typeof d.format === 'function') ? d.format('YYYY-MM-DD') : (d || "");
+            return acc;
+          }, {}),
+          tienDo: preservedTienDo, // Dán lại tiến độ cũ vào đây
+          lichSu: preservedLichSu   // Dán lại lịch sử cũ vào đây
         };
       });
 
       const finalData = {
-        tenSP: values.tenSP || "",
-        tongSoBo: values.tongSoBo || 0,
-        chiTiet: cleanedItems,
+        tenSP: values.tenSP.toUpperCase(),
+        tongSoBo: Number(values.tongSoBo),
         deadlineDongGoi: values.deadlineDongGoi?.format?.('YYYY-MM-DD') || "",
-        ngayGiao: values.ngayGiao?.format?.('DD/MM/YYYY') || ""
+        ngayGiao: values.ngayGiao?.format?.('DD/MM/YYYY') || "",
+        chiTiet: cleanedItems,
+        daGiao: editingOrder.daGiao || false
       };
 
-      // Đảm bảo fbKey tồn tại trước khi update
-      if (!editingOrder?.fbKey) {
-        throw new Error("Không tìm thấy mã đơn hàng (fbKey) để cập nhật!");
-      }
+      await update(ref(db, `orders/${editingOrder.fbKey}`), finalData); // Ghi đè
 
-      await update(ref(db, `orders/${editingOrder.fbKey}`), finalData);
-
-      message.success("Đã cập nhật đơn hàng thành công!");
-      setIsEditModalOpen(false);
+      message.success("Đã cập nhật thành công, tiến độ vẫn giữ nguyên!");
+      setIsModalOpen(false);
+      setEditingOrder(null);
+      form.resetFields();
     } catch (error) {
-      console.error("Lỗi Firebase Update:", error);
       message.error("Lỗi: " + error.message);
     }
   };
 
-const handleCreateOrder = (v) => {
-  try {
-    // 1. Kiểm tra nếu chưa thêm linh kiện nào
-    if (!v.items || v.items.length === 0) {
-      message.error("Đại ca ơi, phải thêm ít nhất 1 linh kiện mới lưu được!");
-      return;
-    }
+  const handleCreateOrder = (values) => {
+    try {
+      if (!values.items || values.items.length === 0) {
+        message.error("Đại ca ơi, phải thêm ít nhất 1 linh kiện!");
+        return;
+      }
 
-    const list = v.items.map((it, i) => {
-      const formattedDeadlines = {};
-      const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'];
+      const list = values.items.map((it, i) => {
+        const formattedDeadlines = {};
+        const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'];
 
-      // Duyệt qua các bước để lấy ngày, tránh lỗi undefined
-      steps.forEach(step => {
-        const dateVal = it.deadlines?.[step];
-        formattedDeadlines[step] = (dateVal && typeof dateVal.format === 'function') 
-          ? dateVal.format('YYYY-MM-DD') 
-          : "";
+        steps.forEach(step => {
+          const dateVal = it.deadlines?.[step];
+          formattedDeadlines[step] = (dateVal && typeof dateVal.format === 'function')
+            ? dateVal.format('YYYY-MM-DD')
+            : "";
+        });
+
+        return {
+          key: Date.now() + i,
+          name: it.name || "Linh kiện không tên",
+          can: Number(it.qty) || 0,
+          groupName: (it.groupName || "").trim(),
+          soBoCum: it.soBoCum || 0,
+          skipSteps: Array.isArray(it.skipSteps) ? it.skipSteps : [],
+          deadlines: formattedDeadlines,
+          tienDo: { phoi: 0, dinhHinh: 0, lapRap: 0, nham: 0, son: 0, dongGoi: 0 },
+          lichSu: []
+        };
       });
 
-      return {
-        key: Date.now() + i,
-        name: it.name || "Linh kiện không tên",
-        can: Number(it.qty) || 0, // Đảm bảo là số
-        qty: Number(it.qty) || 0, // Lưu cả qty để đồng bộ AntD Form
-        groupName: (it.groupName || "").trim(),
-        soBoCum: it.soBoCum || 0,
-        skipSteps: Array.isArray(it.skipSteps) ? it.skipSteps : [],
-        deadlines: formattedDeadlines,
-        tienDo: { phoi: 0, dinhHinh: 0, lapRap: 0, nham: 0, son: 0, dongGoi: 0 },
-        lichSu: []
-      };
-    });
+      push(ref(db, 'orders/'), {
+        tenSP: (values.tenSP || "").toUpperCase(),
+        tongSoBo: Number(values.tongSoBo) || 0,
+        soLuongDongGoi: 0,
+        ngayGiao: values.ngayGiao ? values.ngayGiao.format('DD/MM/YYYY') : "",
+        deadlineDongGoi: values.deadlineDongGoi ? values.deadlineDongGoi.format('YYYY-MM-DD') : "",
+        chiTiet: list,
+        daGiao: false,
+        createdAt: new Date().toISOString()
+      })
+        .then(() => {
+          setIsModalOpen(false);
+          form.resetFields();
+          message.success('Đã tạo đơn thành công!');
+        })
+        .catch((err) => message.error("Lỗi Firebase: " + err.message));
 
-    // 2. Đẩy dữ liệu lên Firebase
-    push(ref(db, 'orders/'), {
-      tenSP: (v.tenSP || "").toUpperCase(),
-      tongSoBo: Number(v.tongSoBo) || 0,
-      soLuongDongGoi: 0,
-      ngayGiao: v.ngayGiao ? v.ngayGiao.format('DD/MM/YYYY') : "",
-      deadlineDongGoi: v.deadlineDongGoi ? v.deadlineDongGoi.format('YYYY-MM-DD') : "",
-      chiTiet: list,
-      daGiao: false,
-      createdAt: new Date().toISOString() // Lưu thêm ngày tạo để dễ sắp xếp
-    })
-    .then(() => {
-      setIsModalOpen(false);
-      form.resetFields();
-      message.success('Đã tạo đơn thành công cho đại ca!');
-    })
-    .catch((err) => {
-      message.error("Lỗi Firebase: " + err.message);
-    });
+    } catch (error) {
+      console.error("Crash:", error);
+    }
+  };
 
-  } catch (error) {
-    console.error("Lỗi crash code:", error);
-    message.error("Lỗi hệ thống: " + error.message);
-  }
-};
-
+  const handleFinalSubmit = (values) => {
+    if (editingOrder && editingOrder.fbKey) {
+      // Nếu có fbKey tức là đơn hàng đã tồn tại trên Firebase -> Cập nhật
+      handleUpdateOrder(values);
+    } else {
+      // Nếu không có fbKey -> Tạo mới hoàn toàn
+      handleCreateOrder(values);
+    }
+  };
+  const openCreateModal = () => {
+    setEditingOrder(null);
+    form.resetFields();
+    setIsModalOpen(true);
+  };
   const stats = useMemo(() => {
     const total = orders.filter(o => !o.daGiao).length;
     const completed = orders.filter(o => !o.daGiao && (o.soLuongDongGoi || 0) >= (o.tongSoBo || 1)).length;
@@ -685,8 +685,28 @@ const handleCreateOrder = (v) => {
         ),
         extra: (
           <Space onClick={(e) => e.stopPropagation()}>
-            {!order.daGiao && <Button type="text" icon={<EditOutlined />} onClick={() => openEditModal(order)} />}
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => Modal.confirm({ title: 'Xoá đơn này?', onOk: () => remove(ref(db, `orders/${order.fbKey}`)) })} />
+            {/* Chỉ hiện nút Sửa và Xóa nếu là Admin */}
+            {isAdmin && (
+              <>
+                {!order.daGiao && (
+                  <Button
+                    type="text"
+                    icon={<EditOutlined />}
+                    onClick={() => openEditModal(order)}
+                  />
+                )}
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => Modal.confirm({
+                    title: 'Xoá đơn này?',
+                    content: 'Hành động này không thể hoàn tác!',
+                    onOk: () => remove(ref(db, `orders/${order.fbKey}`))
+                  })}
+                />
+              </>
+            )}
           </Space>
         ),
         children: (
@@ -1036,7 +1056,11 @@ const handleCreateOrder = (v) => {
                 <Space wrap style={{ marginBottom: 20 }}>
                   <Input placeholder="Tìm tên sản phẩm..." prefix={<SearchOutlined />} style={{ width: 250 }} onChange={e => setSearchText(e.target.value)} allowClear />
                   <RangePicker format="DD/MM/YYYY" onChange={setDateRange} />
-                  <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => { form.resetFields(); setIsModalOpen(true); }} style={{ borderRadius: 8, paddingLeft: 30, paddingRight: 30 }}>TẠO ĐƠN MỚI</Button>
+                  {isAdmin && (
+                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
+                      TẠO ĐƠN MỚI
+                    </Button>
+                  )}
                 </Space>
 
                 <Tabs
@@ -1129,182 +1153,31 @@ const handleCreateOrder = (v) => {
         ]}
       />
 
-      <Modal
-        title={isModalOpen ? "TẠO ĐƠN MỚI" : "CHỈNH SỬA ĐƠN HÀNG"}
-        open={isModalOpen || isEditModalOpen}
-        forceRender
-        onOk={() => isModalOpen ? form.submit() : editForm.submit()}
-        onCancel={() => { setIsModalOpen(false); setIsEditModalOpen(false); }}
-        width="90%"
-        okText="LƯU DỮ LIỆU"
-        cancelText="HỦY"
-      >
-        <Form form={isModalOpen ? form : editForm} layout="vertical" onFinish={isModalOpen ? handleCreateOrder : handleUpdateOrder
+      <div className="app-container">
+        {/* Nút tạo mới đơn hàng */}
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
+          TẠO ĐƠN MỚI
+        </Button>
 
-          
-        }
-        
-        onFinishFailed={(errorInfo) => {
-    console.log('Lỗi nhập liệu:', errorInfo);
-    message.error("Vui lòng kiểm tra lại các ô màu đỏ!");
-  }}>
-          <Row gutter={16}>
-            <Col span={10}>
-              <Form.Item name="tenSP" label="Tên sản phẩm" rules={[{ required: true, message: 'Nhập tên SP' }]}><Input placeholder="Ví dụ: TỦ GỖ SỒI" /></Form.Item>
-            </Col>
-            <Col span={5}>
-              <Form.Item name="tongSoBo" label="Tổng số bộ cần" rules={[{ required: true, message: 'Nhập số bộ' }]}>
-                <InputNumber min={1} style={{ width: '100%' }} placeholder="VD: 568" />
-              </Form.Item>
-            </Col>
-            <Col span={9}>
-              <Form.Item name="deadlineDongGoi" label={<Text strong style={{ color: '#fa8c16' }}>Hạn Đóng Gói Xong</Text>} rules={[{ required: true, message: 'Chọn hạn đóng gói' }]}>
-                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" placeholder="Ngày xong toàn bộ đơn" />
-              </Form.Item>
-            </Col>
-          </Row>
+        {/* MODAL DUY NHẤT DÙNG CHO CẢ THÊM VÀ SỬA */}
+        <Modal
+          title={editingOrder ? `CHỈNH SỬA: ${editingOrder.tenSP}` : "TẠO ĐƠN HÀNG MỚI"}
+          open={isModalOpen}
+          onCancel={() => setIsModalOpen(false)}
+          footer={null} // Tắt footer của Modal vì nút Lưu nằm trong OrderForm rồi
+          width={1000}
+          destroyOnClose
+        >
+          <OrderForm
+            form={form}
+            initialData={editingOrder}
+            onFinish={handleFinalSubmit}
+          />
+        </Modal>
 
-          <Text strong style={{ display: 'block', marginBottom: 10 }}>DANH SÁCH LINH KIỆN & HẠN CHÓT TỔ:</Text>
-          <Form.List name="items">
-            {(fields, { add, remove }) => (
-              <>
-                {fields.map(({ key, name, ...restField }) => (
-                  <Card
-                    size="small"
-                    key={key}
-                    style={{
-                      marginBottom: 20,
-                      borderRadius: '8px',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-                      borderLeft: '4px solid #1890ff' // Vạch màu xanh bên trái cho chuyên nghiệp
-                    }}
-                    styles={{ body: { padding: '12px 20px' } }} // Cách viết mới
-                  >
-                    {/* HÀNG 1: THÔNG TIN CHÍNH */}
-                    <Row gutter={16} align="bottom">
-                      <Col span={6}>
-                        <Form.Item
-                          {...restField}
-                          name={[name, 'groupName']}
-                          label={<Text strong style={{ color: '#d48806' }}>Tên Cụm (Nếu có)</Text>}
-                        // Tuyệt đối không để rules ở đây
-                        >
-                          <Input
-                            placeholder="Lẻ thì để trống"
-                            allowClear
-                            style={{ background: '#fffbe6', border: '1px solid #ffe58f' }}
-                          />
-                        </Form.Item>
-                      </Col>
-
-                      <Col span={4}>
-                        <Form.Item
-                          {...restField}
-                          name={[name, 'soBoCum']}
-                          label={<Text strong style={{ color: '#722ed1' }}>Số Bộ/Cụm</Text>}
-                        >
-                          <InputNumber
-                            min={0}
-                            style={{ width: '100%', borderColor: '#d3adf7' }}
-                            placeholder="0"
-                          />
-                        </Form.Item>
-                      </Col>
-
-                      <Col span={8}>
-                        <Form.Item
-                          {...restField}
-                          name={[name, 'name']}
-                          rules={[{ required: true, message: 'Nhập tên linh kiện!' }]}
-                          label={<Text strong style={{ color: '#096dd9' }}>Tên Linh Kiện</Text>}
-                        >
-                          <Input placeholder="Nhập tên chi tiết..." />
-                        </Form.Item>
-                      </Col>
-
-                      <Col span={4}>
-                        <Form.Item
-                          {...restField}
-                          name={[name, 'qty']}
-                          rules={[{ required: true, message: 'Nhập số lượng!' }]}
-                          label={<Text strong style={{ color: '#096dd9' }}>SL Cái</Text>}
-                        >
-                          <InputNumber min={1} style={{ width: '100%' }} />
-                        </Form.Item>
-                      </Col>
-
-                      <Col span={2} style={{ textAlign: 'right' }}>
-                        <Button
-                          type="primary" danger ghost shape="circle"
-                          icon={<DeleteOutlined />}
-                          onClick={() => remove(name)}
-                          style={{ marginBottom: '5px' }}
-                        />
-                      </Col>
-                    </Row>
-
-                    <Divider style={{ margin: '12px 0' }} />
-
-                    {/* HÀNG 2: DEADLINE & SKIP STEPS */}
-                    <Row gutter={16}>
-                      <Col span={16}>
-                        <div style={{ background: '#f0f5ff', padding: '10px', borderRadius: '6px', border: '1px solid #adc6ff' }}>
-                          <Text type="secondary" style={{ fontSize: '11px', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
-                            <CalendarOutlined /> HẠN CHÓT TỪNG TỔ:
-                          </Text>
-                          <Row gutter={[8, 8]}>
-                            {['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'].map(step => (
-                              <Col span={4} key={step}>
-                                <Form.Item
-                                  {...restField}
-                                  name={[name, 'deadlines', step]}
-                                  label={<span style={{ fontSize: '10px' }}>{step.toUpperCase()}</span>}
-                                  style={{ marginBottom: 0 }}
-                                >
-                                  <DatePicker size="small" format="DD/MM" style={{ width: '100%' }} placeholder="--/--" />
-                                </Form.Item>
-                              </Col>
-                            ))}
-                          </Row>
-                        </div>
-                      </Col>
-
-                      <Col span={8}>
-                        <div style={{ background: '#fff1f0', padding: '10px', borderRadius: '6px', border: '1px solid #ffa39e', height: '100%' }}>
-                          <Form.Item
-                            {...restField}
-                            name={[name, 'skipSteps']}
-                            label={<Text type="danger" style={{ fontSize: '11px', fontWeight: 'bold' }}>BỎ QUA CÔNG ĐOẠN:</Text>}
-                            style={{ marginBottom: 0 }}
-                          >
-                            <Checkbox.Group style={{ width: '100%' }}>
-                              <Row>
-                                {['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'].map(s => (
-                                  <Col span={8} key={s}>
-                                    <Checkbox value={s} style={{ fontSize: '10px' }}>{s.toUpperCase()}</Checkbox>
-                                  </Col>
-                                ))}
-                              </Row>
-                            </Checkbox.Group>
-                          </Form.Item>
-                        </div>
-                      </Col>
-                    </Row>
-
-                    {/* Hidden fields */}
-                    <Form.Item name={[name, 'key']} hidden><Input /></Form.Item>
-                    <Form.Item name={[name, 'tienDo']} hidden><Input /></Form.Item>
-                    <Form.Item name={[name, 'lichSu']} hidden><Input /></Form.Item>
-                  </Card>
-                ))}
-                <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} style={{ marginBottom: 20 }}>Thêm linh kiện</Button>
-              </>
-            )}
-          </Form.List>
-
-          <Form.Item name="ngayGiao" label="Hạn giao hàng cho khách (Final Delivery Date)" rules={[{ required: true }]}><DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" /></Form.Item>
-        </Form>
-      </Modal>
+        {/* ... Phần còn lại của giao diện ... */}
+        {/* Khi render danh sách, nút sửa sẽ gọi: openEditModal(order) */}
+      </div>
     </div>
   );
 };
