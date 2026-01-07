@@ -1155,9 +1155,7 @@ const App = () => {
 
       <div className="app-container">
         {/* Nút tạo mới đơn hàng */}
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
-          TẠO ĐƠN MỚI
-        </Button>
+
 
         {/* MODAL DUY NHẤT DÙNG CHO CẢ THÊM VÀ SỬA */}
         <Modal
