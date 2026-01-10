@@ -5,7 +5,7 @@ import dayjs from 'dayjs';
 
 const { Text } = Typography;
 
-const OrderForm = ({ form, initialData, onFinish }) => {
+const OrderForm = ({ form, initialData, onFinish, isEditing, onCopy }) => {
   const STEPS = [
     { id: 'phoi', label: 'Phôi' },
     { id: 'dinhHinh', label: 'Định hình' },
@@ -16,20 +16,32 @@ const OrderForm = ({ form, initialData, onFinish }) => {
 
   useEffect(() => {
     if (initialData) {
-      // Logic dành cho CHỈNH SỬA: Chuyển string từ DB về object dayjs cho DatePicker
-      form.setFieldsValue({
-        ...initialData,
-        deadlineDongGoi: initialData.deadlineDongGoi ? dayjs(initialData.deadlineDongGoi) : null,
-        ngayGiao: initialData.ngayGiao ? dayjs(initialData.ngayGiao, 'DD/MM/YYYY') : null,
-        items: initialData.chiTiet?.map(it => ({
+      let formData = { ...initialData };
+      if (initialData.chiTiet) {
+        // Logic dành cho CHỈNH SỬA từ DB: Chuyển string từ DB về object dayjs cho DatePicker
+        formData.deadlineDongGoi = initialData.deadlineDongGoi ? dayjs(initialData.deadlineDongGoi) : null;
+        formData.ngayGiao = initialData.ngayGiao ? dayjs(initialData.ngayGiao, 'DD/MM/YYYY') : null;
+        formData.items = initialData.chiTiet?.map(it => ({
           ...it,
           qty: it.can, // Map 'can' từ DB sang 'qty' của form
           deadlines: Object.keys(it.deadlines || {}).reduce((acc, step) => {
             acc[step] = it.deadlines[step] ? dayjs(it.deadlines[step]) : null;
             return acc;
           }, {})
-        }))
-      });
+        }));
+      } else if (initialData.items) {
+        // Logic dành cho sao chép: dữ liệu đã ở dạng form, nhưng cần chuyển dates về dayjs
+        formData.items = initialData.items.map(it => ({
+          ...it,
+          deadlines: Object.keys(it.deadlines || {}).reduce((acc, step) => {
+            acc[step] = it.deadlines[step] ? dayjs(it.deadlines[step]) : null;
+            return acc;
+          }, {})
+        }));
+        if (formData.deadlineDongGoi) formData.deadlineDongGoi = dayjs(formData.deadlineDongGoi);
+        if (formData.ngayGiao) formData.ngayGiao = dayjs(formData.ngayGiao);
+      }
+      form.setFieldsValue(formData);
     } else {
       form.resetFields();
       form.setFieldsValue({ items: [{}] }); // Tạo sẵn 1 dòng khi mở form mới
@@ -37,7 +49,7 @@ const OrderForm = ({ form, initialData, onFinish }) => {
   }, [initialData, form]);
 
   return (
-    <Form form={form} layout="vertical" onFinish={onFinish}>
+    <Form  form={form} layout="vertical" onFinish={onFinish}>
       <Row gutter={16}>
         <Col span={10}>
           <Form.Item name="tenSP" label="Tên sản phẩm" rules={[{ required: true }]}>
@@ -121,6 +133,7 @@ const OrderForm = ({ form, initialData, onFinish }) => {
       <div style={{ textAlign: 'right', marginTop: 24 }}>
         <Space>
           <Button onClick={() => form.resetFields()}>Làm mới</Button>
+          {isEditing && <Button onClick={() => onCopy(form.getFieldsValue())}>Sao chép đơn hàng</Button>}
           <Button type="primary" htmlType="submit" size="large">LƯU ĐƠN HÀNG</Button>
         </Space>
       </div>

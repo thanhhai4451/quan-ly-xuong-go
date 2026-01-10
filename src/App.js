@@ -58,6 +58,7 @@ const App = () => {
   const [orders, setOrders] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState(null);
+  const [copiedOrder, setCopiedOrder] = useState(null);
   const [searchText, setSearchText] = useState('');
   const [searchLog, setSearchLog] = useState('');
   const [dateRange, setDateRange] = useState(null);
@@ -439,8 +440,15 @@ const App = () => {
       handleCreateOrder(values);
     }
   };
+
+  const handleCopy = (data) => {
+    setCopiedOrder(data);
+    setEditingOrder(null);
+  };
+
   const openCreateModal = () => {
     setEditingOrder(null);
+    setCopiedOrder(null);
     form.resetFields();
     setIsModalOpen(true);
   };
@@ -464,7 +472,13 @@ const App = () => {
     });
 
     return {
-      dangLam: filtered.filter(o => !o.daGiao && calculateOrderProgress(o) < 100),
+      dangLam: filtered.filter(o => !o.daGiao && calculateOrderProgress(o) < 100).sort((a, b) => {
+        const hasA = a.chiTiet?.some(item => Object.values(item.tienDo || {}).some(val => val > 0));
+        const hasB = b.chiTiet?.some(item => Object.values(item.tienDo || {}).some(val => val > 0));
+        if (hasA && !hasB) return -1;
+        if (!hasA && hasB) return 1;
+        return 0; // Giữ thứ tự ban đầu nếu cả hai đều có hoặc không
+      }),
       choGiao: filtered.filter(o => !o.daGiao && calculateOrderProgress(o) >= 100),
       daGiao: filtered.filter(o => o.daGiao)
     };
@@ -618,27 +632,10 @@ const App = () => {
         }
       }))
     ];
-  }, [handleUpdateGroupRecord, handleUpdateRecord]); // Xóa 'user' khỏi dependency nếu không dùng tới nữa
-
-
-
-const formatOrderName = (fullTitle) => {
-  if (!fullTitle) return { name: '', code: '' };
-  // Tách bằng dấu "/" vì mã BLZ của bạn thường nằm sau dấu này
-  const parts = fullTitle.split('/');
-  return {
-    name: parts[0].trim(),
-    code: parts[1] ? parts[1].trim() : ''
-  };
-};
-
-
-
+  }, [handleUpdateGroupRecord, handleUpdateRecord]); 
   const renderOrderList = (data, isDeliveredTab = false, page, setPage) => {
-    // 1. TỰ ĐỘNG SẮP XẾP: Gom các linh kiện cùng Cụm lại với nhau trước khi render
     const processedData = data.map(order => {
       const sortedChiTiet = [...(order.chiTiet || [])].sort((a, b) => {
-        // Đẩy linh kiện có groupName lên trên, sắp xếp theo tên cụm
         const groupA = a.groupName?.trim() || "ZZZZ";
         const groupB = b.groupName?.trim() || "ZZZZ";
         return groupA.localeCompare(groupB);
@@ -673,36 +670,24 @@ const formatOrderName = (fullTitle) => {
 
       return {
         key: order.fbKey,
-label: (
-  <Row align="middle" style={{ width: '95%' }}>
-    <Col xs={24} sm={10}>
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {/* Dòng 1: Tên sản phẩm - Viết hoa chữ cái đầu cho sạch sẽ */}
-        <Text strong style={{ fontSize: '16px', color: '#1890ff', textTransform: 'capitalize' }}>
-          {order.tenSP.split('/')[0].toLowerCase()}
-        </Text>
-        
-        {/* Dòng 2: Mã BLZ - Cho nằm trong khung màu xanh cho sếp dễ tìm */}
-        <div style={{ marginTop: '5px' }}>
-          <Tag color="blue" style={{ fontWeight: 'bold' }}>
-            {order.tenSP.split('/')[1] || "MÃ BLZ"} 
-          </Tag>
-          {order.daGiao && <Tag color="default">ĐÃ GIAO</Tag>}
-        </div>
-      </div>
-    </Col>
-
-    {/* Phần tiến độ cho nó nhỏ lại một bên */}
-    <Col xs={16} sm={8} style={{ padding: '0 20px' }}>
-      <div style={{ fontSize: '11px', color: '#8c8c8c' }}>Tiến độ: {progress}%</div>
-      <Progress percent={progress} size="small" status="active" />
-    </Col>
-
-    <Col xs={8} sm={6} style={{ textAlign: 'right' }}>
-      <Tag color="red">Giao: {order.ngayGiao}</Tag>
-    </Col>
-  </Row>
-),
+        label: (
+          <Row align="middle" style={{ width: '95%' }}>
+            <Col xs={24} sm={8}>
+              <Badge status={order.daGiao ? "default" : (progress >= 100 ? "success" : (dayjs(order.ngayGiao, 'DD/MM/YYYY').isBefore(dayjs()) ? "error" : "processing"))} />
+              <Text strong style={{ fontSize: '16px', marginLeft: 10, color: '#001529', fontWeight: 'bold', textTransform: 'uppercase' }}>{order.tenSP}</Text>
+              {order.daGiao && <Tag color="default" style={{ marginLeft: 8 }}>ĐÃ GIAO</Tag>}
+            </Col>
+            <Col xs={16} sm={10} style={{ padding: '0 20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', marginRight: '8px', color: '#8c8c8c' }}>Tiến độ:</span>
+                <Progress percent={progress} size="small" status={order.daGiao ? "normal" : "active"} strokeColor={order.daGiao ? "#d9d9d9" : { '0%': '#108ee9', '100%': '#52c41a' }} />
+              </div>
+            </Col>
+            <Col xs={8} sm={6} style={{ textAlign: 'right' }}>
+              <Tag color={order.daGiao ? "default" : (dayjs(order.ngayGiao, 'DD/MM/YYYY').isBefore(dayjs()) ? "red" : "blue")} icon={<ClockCircleOutlined />}>Giao: {order.ngayGiao}</Tag>
+            </Col>
+          </Row>
+        ),
         extra: (
           <Space onClick={(e) => e.stopPropagation()}>
             {/* Chỉ hiện nút Sửa và Xóa nếu là Admin */}
@@ -732,14 +717,12 @@ label: (
         children: (
           <>
             <Table
-              // SỬ DỤNG order.chiTiet ĐÃ ĐƯỢC SORT Ở TRÊN
               columns={currentColumns}
               dataSource={order.chiTiet}
               pagination={false}
               bordered
               scroll={{ x: 500 }}
               size="middle"
-              // Đảm bảo rowKey chuẩn để Ant Design không render nhầm hàng
               rowKey={(record) => record.key || record.name}
             />
             <div style={{
@@ -1179,8 +1162,10 @@ label: (
         >
           <OrderForm
             form={form}
-            initialData={editingOrder}
+            initialData={editingOrder || copiedOrder}
             onFinish={handleFinalSubmit}
+            isEditing={!!editingOrder}
+            onCopy={handleCopy}
           />
         </Modal>
 
