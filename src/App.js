@@ -622,7 +622,15 @@ const App = () => {
 
 
 
-
+const formatOrderName = (fullTitle) => {
+  if (!fullTitle) return { name: '', code: '' };
+  // Tách bằng dấu "/" vì mã BLZ của bạn thường nằm sau dấu này
+  const parts = fullTitle.split('/');
+  return {
+    name: parts[0].trim(),
+    code: parts[1] ? parts[1].trim() : ''
+  };
+};
 
 
 
@@ -665,24 +673,36 @@ const App = () => {
 
       return {
         key: order.fbKey,
-        label: (
-          <Row align="middle" style={{ width: '95%' }}>
-            <Col xs={24} sm={8}>
-              <Badge status={order.daGiao ? "default" : (progress >= 100 ? "success" : (dayjs(order.ngayGiao, 'DD/MM/YYYY').isBefore(dayjs()) ? "error" : "processing"))} />
-              <Text strong style={{ fontSize: '16px', marginLeft: 10 }}>{order.tenSP}</Text>
-              {order.daGiao && <Tag color="default" style={{ marginLeft: 8 }}>ĐÃ GIAO</Tag>}
-            </Col>
-            <Col xs={16} sm={10} style={{ padding: '0 20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', marginRight: '8px', color: '#8c8c8c' }}>Tiến độ:</span>
-                <Progress percent={progress} size="small" status={order.daGiao ? "normal" : "active"} strokeColor={order.daGiao ? "#d9d9d9" : { '0%': '#108ee9', '100%': '#52c41a' }} />
-              </div>
-            </Col>
-            <Col xs={8} sm={6} style={{ textAlign: 'right' }}>
-              <Tag color={order.daGiao ? "default" : (dayjs(order.ngayGiao, 'DD/MM/YYYY').isBefore(dayjs()) ? "red" : "blue")} icon={<ClockCircleOutlined />}>Giao: {order.ngayGiao}</Tag>
-            </Col>
-          </Row>
-        ),
+label: (
+  <Row align="middle" style={{ width: '95%' }}>
+    <Col xs={24} sm={10}>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        {/* Dòng 1: Tên sản phẩm - Viết hoa chữ cái đầu cho sạch sẽ */}
+        <Text strong style={{ fontSize: '16px', color: '#1890ff', textTransform: 'capitalize' }}>
+          {order.tenSP.split('/')[0].toLowerCase()}
+        </Text>
+        
+        {/* Dòng 2: Mã BLZ - Cho nằm trong khung màu xanh cho sếp dễ tìm */}
+        <div style={{ marginTop: '5px' }}>
+          <Tag color="blue" style={{ fontWeight: 'bold' }}>
+            {order.tenSP.split('/')[1] || "MÃ BLZ"} 
+          </Tag>
+          {order.daGiao && <Tag color="default">ĐÃ GIAO</Tag>}
+        </div>
+      </div>
+    </Col>
+
+    {/* Phần tiến độ cho nó nhỏ lại một bên */}
+    <Col xs={16} sm={8} style={{ padding: '0 20px' }}>
+      <div style={{ fontSize: '11px', color: '#8c8c8c' }}>Tiến độ: {progress}%</div>
+      <Progress percent={progress} size="small" status="active" />
+    </Col>
+
+    <Col xs={8} sm={6} style={{ textAlign: 'right' }}>
+      <Tag color="red">Giao: {order.ngayGiao}</Tag>
+    </Col>
+  </Row>
+),
         extra: (
           <Space onClick={(e) => e.stopPropagation()}>
             {/* Chỉ hiện nút Sửa và Xóa nếu là Admin */}
@@ -959,7 +979,7 @@ const App = () => {
                     ) : (
                       notifications.map((item) => {
                         const isOverdue = item.type === 'danger';
-                        const isSystemNoti = !item.fbKey; // Kiểm tra tin hệ thống
+                        const isSystemNoti = !item.fbKey; 
 
                         return (
                           <div
@@ -993,7 +1013,6 @@ const App = () => {
                               </Tag>
                             </div>
 
-                            {/* CHỈ HIỆN NÚT X NẾU KHÔNG PHẢI TIN HỆ THỐNG */}
                             {!isSystemNoti && (
                               <Button
                                 type="text"
@@ -1086,8 +1105,6 @@ const App = () => {
               </div>
             )
           },
-
-          // --- TAB MỚI: BÀN GIAO CÔNG ĐOẠN (Thêm vào đây) ---
           {
             key: 'transfer',
             label: <b><SwapOutlined /> BÀN GIAO & XÁC NHẬN</b>,
@@ -1099,8 +1116,6 @@ const App = () => {
               />
             )
           },
-
-          // --- TAB 2 (Cũ): NHẬT KÝ (Giữ nguyên của đại ca) ---
           {
             key: '2',
             label: <b><HistoryOutlined /> NHẬT KÝ</b>,
@@ -1154,15 +1169,11 @@ const App = () => {
       />
 
       <div className="app-container">
-        {/* Nút tạo mới đơn hàng */}
-
-
-        {/* MODAL DUY NHẤT DÙNG CHO CẢ THÊM VÀ SỬA */}
         <Modal
           title={editingOrder ? `CHỈNH SỬA: ${editingOrder.tenSP}` : "TẠO ĐƠN HÀNG MỚI"}
           open={isModalOpen}
           onCancel={() => setIsModalOpen(false)}
-          footer={null} // Tắt footer của Modal vì nút Lưu nằm trong OrderForm rồi
+          footer={null} 
           width={1000}
           destroyOnClose
         >
@@ -1173,8 +1184,6 @@ const App = () => {
           />
         </Modal>
 
-        {/* ... Phần còn lại của giao diện ... */}
-        {/* Khi render danh sách, nút sửa sẽ gọi: openEditModal(order) */}
       </div>
     </div>
   );
