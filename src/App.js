@@ -172,6 +172,42 @@ const App = () => {
     return Math.min(100, Math.round((daDongGoi / tongBo) * 100));
   };
 
+  const calculateStepsProgress = (order) => {
+    if (!order || !order.chiTiet || order.chiTiet.length === 0) return 0;
+
+    let totalRequired = 0;
+    let totalCompleted = 0;
+    const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son']; // Loại bỏ dongGoi
+    const groupSteps = ['lapRap', 'nham', 'son'];
+
+    // Để tránh trùng lặp cho các bước nhóm
+    const processedGroups = new Set();
+
+    order.chiTiet.forEach(item => {
+      steps.forEach(step => {
+        if (item.skipSteps?.includes(step)) return;
+
+        let required = 0;
+        let completed = item.tienDo?.[step] || 0;
+
+        if (groupSteps.includes(step) && item.groupName) {
+          const groupKey = `${item.groupName}-${step}`;
+          if (processedGroups.has(groupKey)) return;
+          processedGroups.add(groupKey);
+          required = item.soBoCum || 0;
+        } else {
+          required = item.can || 0;
+        }
+
+        totalRequired += required;
+        totalCompleted += Math.min(completed, required); // Không vượt quá số cần
+      });
+    });
+
+    if (totalRequired === 0) return 0;
+    return Math.min(100, Math.round((totalCompleted / totalRequired) * 100));
+  };
+
 
 
   // Hàm mở Modal Sửa (đại ca đã có openEditModal, chỉ cần đổi state)
@@ -646,6 +682,7 @@ const App = () => {
     const collapseItems = processedData.map(order => {
       const currentColumns = tableColumns(order.fbKey, order, order);
       const progress = calculateOrderProgress(order);
+      const stepsProgress = calculateStepsProgress(order);
       const isDone = (order.soLuongDongGoi || 0) >= (order.tongSoBo || 1);
       const isPackingOverdue = order.deadlineDongGoi && !isDone && dayjs().isAfter(dayjs(order.deadlineDongGoi), 'day');
 
@@ -678,9 +715,15 @@ const App = () => {
               {order.daGiao && <Tag color="default" style={{ marginLeft: 8 }}>ĐÃ GIAO</Tag>}
             </Col>
             <Col xs={16} sm={10} style={{ padding: '0 20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center' }}>
-                <span style={{ fontSize: '11px', marginRight: '8px', color: '#8c8c8c' }}>Tiến độ:</span>
-                <Progress percent={progress} size="small" status={order.daGiao ? "normal" : "active"} strokeColor={order.daGiao ? "#d9d9d9" : { '0%': '#108ee9', '100%': '#52c41a' }} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10px', marginRight: '4px', color: '#8c8c8c' }}>Đóng gói:</span>
+                  <Progress percent={progress} size="small" status={order.daGiao ? "normal" : "active"} strokeColor={order.daGiao ? "#d9d9d9" : { '0%': '#108ee9', '100%': '#52c41a' }} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span style={{ fontSize: '10px', marginRight: '4px', color: '#8c8c8c' }}>Công đoạn:</span>
+                  <Progress percent={stepsProgress} size="small" status={order.daGiao ? "normal" : "active"} strokeColor={order.daGiao ? "#d9d9d9" : { '0%': '#fa8c16', '100%': '#faad14' }} />
+                </div>
               </div>
             </Col>
             <Col xs={8} sm={6} style={{ textAlign: 'right' }}>
