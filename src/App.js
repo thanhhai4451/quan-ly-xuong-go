@@ -3,15 +3,16 @@ import {
   Table, Tag, Progress, Card, Typography, Collapse,
   InputNumber, Space, Button, Modal, Form, Input,
   DatePicker, message, List, Popover, Row, Col,
-  Statistic, Tabs, Badge, Avatar, Pagination, Flex
+  Statistic, Tabs, Badge, Avatar, Pagination, Flex, 
 } from 'antd';
 
+import ExtraStock from './ExtraStock';
 
 import {
   PlusOutlined, DeleteOutlined, BuildOutlined, ClockCircleOutlined,
   CarryOutOutlined, SearchOutlined, HistoryOutlined, AlertOutlined, AppstoreOutlined,
   UserOutlined, LogoutOutlined, LockOutlined, EditOutlined, BellOutlined, CheckCircleOutlined,
-  SendOutlined, SwapOutlined
+  SendOutlined, SwapOutlined, InboxOutlined
 
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -24,6 +25,7 @@ import OrderForm from './OrderForm'; // Import cái file vừa tạo
 const { Panel } = Collapse;
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
+
 
 
 // Đây là "linh kiện" Chuông thông báo đã được cách ly
@@ -67,9 +69,15 @@ const App = () => {
 
   const [realtimeNotis, setRealtimeNotis] = useState([]);
   const isAdmin = user?.email === 'admin@gmail.com';
+  const [khoDu, setKhoDu] = useState({}); // Dán dòng này chung với các useState khác
 
 
-
+useEffect(() => {
+  // Tìm chỗ có onValue(ref(db, 'orders'), ...), dán thêm đoạn này xuống dưới nó
+  onValue(ref(db, 'khoDu'), (snapshot) => {
+    setKhoDu(snapshot.val() || {});
+  });
+}, []);
   useEffect(() => {
     if (!user) return;
     const notiRef = ref(db, 'notifications/');
@@ -199,7 +207,7 @@ const App = () => {
         }
 
         totalRequired += required;
-        totalCompleted += Math.min(completed, required); 
+        totalCompleted += Math.min(completed, required);
       });
     });
 
@@ -214,8 +222,8 @@ const App = () => {
 
     const initialItems = (order.chiTiet || []).map(item => ({
       ...item,
-      key: item.key, 
-      qty: item.can, 
+      key: item.key,
+      qty: item.can,
       deadlines: Object.keys(item.deadlines || {}).reduce((acc, step) => {
         if (item.deadlines[step]) acc[step] = dayjs(item.deadlines[step]);
         return acc;
@@ -665,7 +673,7 @@ const App = () => {
         }
       }))
     ];
-  }, [handleUpdateGroupRecord, handleUpdateRecord]); 
+  }, [handleUpdateGroupRecord, handleUpdateRecord]);
   const renderOrderList = (data, isDeliveredTab = false, page, setPage) => {
     const processedData = data.map(order => {
       const sortedChiTiet = [...(order.chiTiet || [])].sort((a, b) => {
@@ -1002,7 +1010,7 @@ const App = () => {
                     ) : (
                       notifications.map((item) => {
                         const isOverdue = item.type === 'danger';
-                        const isSystemNoti = !item.fbKey; 
+                        const isSystemNoti = !item.fbKey;
 
                         return (
                           <div
@@ -1188,6 +1196,19 @@ const App = () => {
               </Card>
             )
           },
+          // Tìm đến cuối Tab '2' (Nhật Ký), phẩy một cái rồi dán đoạn này vào:
+          {
+            key: 'extraStock',
+            label: <b><InboxOutlined /> KHO HÀNG DƯ</b>,
+            children: (
+              <ExtraStock
+                khoDu={khoDu}
+                db={db}
+                user={user}
+                isAdmin={isAdmin}
+              />
+            )
+          },
         ]}
       />
 
@@ -1196,7 +1217,7 @@ const App = () => {
           title={editingOrder ? `CHỈNH SỬA: ${editingOrder.tenSP}` : "TẠO ĐƠN HÀNG MỚI"}
           open={isModalOpen}
           onCancel={() => setIsModalOpen(false)}
-          footer={null} 
+          footer={null}
           width={1000}
           destroyOnClose
         >
