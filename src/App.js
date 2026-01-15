@@ -180,7 +180,6 @@ const App = () => {
     const steps = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son']; // Loại bỏ dongGoi
     const groupSteps = ['lapRap', 'nham', 'son'];
 
-    // Để tránh trùng lặp cho các bước nhóm
     const processedGroups = new Set();
 
     order.chiTiet.forEach(item => {
@@ -200,7 +199,7 @@ const App = () => {
         }
 
         totalRequired += required;
-        totalCompleted += Math.min(completed, required); // Không vượt quá số cần
+        totalCompleted += Math.min(completed, required); 
       });
     });
 
@@ -210,15 +209,13 @@ const App = () => {
 
 
 
-  // Hàm mở Modal Sửa (đại ca đã có openEditModal, chỉ cần đổi state)
   const openEditModal = (order) => {
-    setEditingOrder(order); // Lưu đơn vào state để đối chiếu sau này
+    setEditingOrder(order);
 
-    // Chuẩn bị dữ liệu nạp vào Form
     const initialItems = (order.chiTiet || []).map(item => ({
       ...item,
-      key: item.key, // QUAN TRỌNG: Phải giữ lại key cũ này
-      qty: item.can, // Đổ số lượng 'can' vào ô 'qty' của form
+      key: item.key, 
+      qty: item.can, 
       deadlines: Object.keys(item.deadlines || {}).reduce((acc, step) => {
         if (item.deadlines[step]) acc[step] = dayjs(item.deadlines[step]);
         return acc;
