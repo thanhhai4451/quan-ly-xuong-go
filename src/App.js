@@ -3,7 +3,7 @@ import {
   Table, Tag, Progress, Card, Typography, Collapse,
   InputNumber, Space, Button, Modal, Form, Input,
   DatePicker, message, List, Popover, Row, Col,
-  Statistic, Tabs, Badge, Avatar, Pagination, Flex, 
+  Statistic, Tabs, Badge, Avatar, Pagination, Flex, Image
 } from 'antd';
 
 import ExtraStock from './ExtraStock';
@@ -12,7 +12,7 @@ import {
   PlusOutlined, DeleteOutlined, BuildOutlined, ClockCircleOutlined,
   CarryOutOutlined, SearchOutlined, HistoryOutlined, AlertOutlined, AppstoreOutlined,
   UserOutlined, LogoutOutlined, LockOutlined, EditOutlined, BellOutlined, CheckCircleOutlined,
-  SendOutlined, SwapOutlined, InboxOutlined
+  SendOutlined, SwapOutlined, InboxOutlined, EyeOutlined, PictureOutlined
 
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -44,6 +44,27 @@ const NotificationIcon = React.memo(({ count, hasDanger }) => {
   );
 });
 
+
+const getDrivePreview = (url) => {
+  if (!url) return "";
+
+  let fileId = null;
+
+  if (url.includes("/file/d/")) {
+    fileId = url.split("/file/d/")[1]?.split("/")[0];
+  } else if (url.includes("open?id=")) {
+    fileId = url.split("open?id=")[1]?.split("&")[0];
+  } else if (url.includes("uc?id=")) {
+    fileId = url.split("uc?id=")[1]?.split("&")[0];
+  }
+
+  if (!fileId) return "";
+
+  // ✅ ĐÚNG CHUẨN IMG
+  return `https://drive.google.com/thumbnail?id=${fileId}&sz=w400`;
+};
+
+
 const App = () => {
   // Thay dòng cũ bằng 2 dòng này
 
@@ -72,12 +93,12 @@ const App = () => {
   const [khoDu, setKhoDu] = useState({}); // Dán dòng này chung với các useState khác
 
 
-useEffect(() => {
-  // Tìm chỗ có onValue(ref(db, 'orders'), ...), dán thêm đoạn này xuống dưới nó
-  onValue(ref(db, 'khoDu'), (snapshot) => {
-    setKhoDu(snapshot.val() || {});
-  });
-}, []);
+  useEffect(() => {
+    // Tìm chỗ có onValue(ref(db, 'orders'), ...), dán thêm đoạn này xuống dưới nó
+    onValue(ref(db, 'khoDu'), (snapshot) => {
+      setKhoDu(snapshot.val() || {});
+    });
+  }, []);
   useEffect(() => {
     if (!user) return;
     const notiRef = ref(db, 'notifications/');
@@ -232,6 +253,7 @@ useEffect(() => {
 
     form.setFieldsValue({
       ...order,
+       hinhAnh: order.hinhAnh || "",
       ngayGiao: dayjs(order.ngayGiao, 'DD/MM/YYYY'),
       deadlineDongGoi: order.deadlineDongGoi ? dayjs(order.deadlineDongGoi) : null,
       items: initialItems
@@ -404,6 +426,7 @@ useEffect(() => {
         tongSoBo: Number(values.tongSoBo),
         deadlineDongGoi: values.deadlineDongGoi?.format?.('YYYY-MM-DD') || "",
         ngayGiao: values.ngayGiao?.format?.('DD/MM/YYYY') || "",
+        hinhAnh: values.hinhAnh || editingOrder.hinhAnh || "",
         chiTiet: cleanedItems,
         daGiao: editingOrder.daGiao || false
       };
@@ -456,6 +479,7 @@ useEffect(() => {
         soLuongDongGoi: 0,
         ngayGiao: values.ngayGiao ? values.ngayGiao.format('DD/MM/YYYY') : "",
         deadlineDongGoi: values.deadlineDongGoi ? values.deadlineDongGoi.format('YYYY-MM-DD') : "",
+        hinhAnh: values.hinhAnh || "",
         chiTiet: list,
         daGiao: false,
         createdAt: new Date().toISOString()
@@ -473,6 +497,7 @@ useEffect(() => {
   };
 
   const handleFinalSubmit = (values) => {
+
     if (editingOrder && editingOrder.fbKey) {
       // Nếu có fbKey tức là đơn hàng đã tồn tại trên Firebase -> Cập nhật
       handleUpdateOrder(values);
@@ -691,35 +716,47 @@ useEffect(() => {
       const isDone = (order.soLuongDongGoi || 0) >= (order.tongSoBo || 1);
       const isPackingOverdue = order.deadlineDongGoi && !isDone && dayjs().isAfter(dayjs(order.deadlineDongGoi), 'day');
 
-      const isDuLinhKien = order.chiTiet?.every(item => {
-        const individualSteps = ['phoi', 'dinhHinh'];
-        const isIndividualDone = individualSteps.every(step => {
-          if (item.skipSteps?.includes(step)) return true;
-          return (item.tienDo?.[step] || 0) >= (item.can || 0);
-        });
 
-        const groupSteps = ['lapRap', 'nham', 'son'];
-        const isGroupDone = groupSteps.every(step => {
-          if (item.skipSteps?.includes(step)) return true;
-          if (item.groupName) {
-            return (item.tienDo?.[step] || 0) >= (order.tongSoBo || 0);
-          }
-          return (item.tienDo?.[step] || 0) >= (item.can || 0);
-        });
-
-        return isIndividualDone && isGroupDone;
-      });
 
       return {
         key: order.fbKey,
         label: (
           <Row align="middle" style={{ width: '95%' }}>
-            <Col xs={24} sm={8}>
-              <Badge status={order.daGiao ? "default" : (progress >= 100 ? "success" : (dayjs(order.ngayGiao, 'DD/MM/YYYY').isBefore(dayjs()) ? "error" : "processing"))} />
-              <Text strong style={{ fontSize: '16px', marginLeft: 10, color: '#001529', fontWeight: 'bold', textTransform: 'uppercase' }}>{order.tenSP}</Text>
-              {order.daGiao && <Tag color="default" style={{ marginLeft: 8 }}>ĐÃ GIAO</Tag>}
+            <Col xs={24} sm={8} style={{ display: 'flex', alignItems: 'center' }}>
+              {/* 1. THÊM HÌNH ẢNH Ở ĐÂY */}
+              <div style={{ marginRight: 12, display: 'flex', alignItems: 'center' }}>
+                {order.hinhAnh ? (
+                  <Image
+                    width={70}
+                    height={70}
+                    src={getDrivePreview(order.hinhAnh)}
+                    fallback="https://placehold.co/45x45?text=MAH"
+                    style={{ borderRadius: 8, objectFit: 'cover', border: '1px solid #f0f0f0' }}
+                    preview={{ cover: <EyeOutlined style={{ fontSize: 12 }} /> }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <div style={{
+                    width: 45, height: 45, borderRadius: 8, background: '#f5f5f5',
+                    display: 'flex', justifyContent: 'center', alignItems: 'center', border: '1px solid #d9d9d9'
+                  }}>
+                    <PictureOutlined style={{ color: '#bfbfbf', fontSize: 20 }} />
+                  </div>
+                )}
+              </div>
+
+              {/* 2. PHẦN TÊN SẢN PHẨM CŨ CỦA ĐẠI CA */}
+              <div style={{ flex: 1 }}>
+                <Badge status={order.daGiao ? "default" : (progress >= 100 ? "success" : (dayjs(order.ngayGiao, 'DD/MM/YYYY').isBefore(dayjs()) ? "error" : "processing"))} />
+                <Text strong style={{ fontSize: '15px', marginLeft: 8, color: '#001529', textTransform: 'uppercase' }}>
+                  {order.tenSP}
+                </Text>
+                {order.daGiao && <Tag color="default" style={{ marginLeft: 8 }}>ĐÃ GIAO</Tag>}
+              </div>
             </Col>
+
             <Col xs={16} sm={10} style={{ padding: '0 20px' }}>
+              {/* Giữ nguyên phần Progress Đóng gói và Công đoạn của đại ca... */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
                   <span style={{ fontSize: '10px', marginRight: '4px', color: '#8c8c8c' }}>Đóng gói:</span>
@@ -731,6 +768,7 @@ useEffect(() => {
                 </div>
               </div>
             </Col>
+
             <Col xs={8} sm={6} style={{ textAlign: 'right' }}>
               <Tag color={order.daGiao ? "default" : (dayjs(order.ngayGiao, 'DD/MM/YYYY').isBefore(dayjs()) ? "red" : "blue")} icon={<ClockCircleOutlined />}>Giao: {order.ngayGiao}</Tag>
             </Col>
@@ -793,8 +831,6 @@ useEffect(() => {
                     size="large"
                     style={{ width: 120 }}
                     value={order.soLuongDongGoi || 0}
-                    disabled={order.daGiao || !isDuLinhKien}
-                    status={!isDuLinhKien ? "warning" : (isPackingOverdue ? "error" : "")}
                     onChange={(val) => {
                       // Cập nhật tạm thời để UI mượt, hoặc dùng onBlur như cũ
                     }}
@@ -806,9 +842,6 @@ useEffect(() => {
                       }
                     }}
                   />
-                  {!isDuLinhKien && !order.daGiao && (
-                    <div style={{ fontSize: '10px', color: '#faad14', fontWeight: 'bold', marginTop: '4px' }}>⚠️ CHƯA ĐỦ LINH KIỆN</div>
-                  )}
                   {order.deadlineDongGoi && (
                     <div style={{ fontSize: '11px', color: isPackingOverdue ? 'red' : '#8c8c8c', fontWeight: 'bold' }}>Hạn xong: {dayjs(order.deadlineDongGoi).format('DD/MM')}</div>
                   )}
@@ -1219,7 +1252,7 @@ useEffect(() => {
           onCancel={() => setIsModalOpen(false)}
           footer={null}
           width={1000}
-          destroyOnClose
+          destroyOnHidden
         >
           <OrderForm
             form={form}

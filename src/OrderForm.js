@@ -1,9 +1,20 @@
 import React, { useEffect } from 'react';
 import { Form, Row, Col, Input, InputNumber, DatePicker, Button, Card, Divider, Checkbox, Space, Typography } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, LinkOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
+
+const convertDriveLinkToImage = (url) => {
+  if (!url) return null;
+  const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (!match) return null;
+
+  const fileId = match[1];
+  return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
+};
+
+
 
 const OrderForm = ({ form, initialData, onFinish, isEditing, onCopy }) => {
   const STEPS = [
@@ -49,7 +60,42 @@ const OrderForm = ({ form, initialData, onFinish, isEditing, onCopy }) => {
   }, [initialData, form]);
 
   return (
-    <Form  form={form} layout="vertical" onFinish={onFinish}>
+    <Form form={form} layout="vertical" onFinish={onFinish}>
+      <Form.Item
+        label={<b>LINK ẢNH SẢN PHẨM (GOOGLE DRIVE)</b>}
+        name="hinhAnh"
+        help="Dán link chia sẻ 'Bất kỳ ai có liên kết' từ Drive vào đây"
+      >
+        <Input
+          prefix={<LinkOutlined />}
+          placeholder="https://drive.google.com/file/d/xxx/view..."
+          allowClear
+        />
+      </Form.Item>
+
+      <Form.Item shouldUpdate>
+  {({ getFieldValue }) => {
+    const link = getFieldValue('hinhAnh');
+    const imgSrc = convertDriveLinkToImage(link);
+
+    return imgSrc ? (
+      <div style={{ marginTop: 12 }}>
+        <img
+          src={imgSrc}
+          alt="Ảnh sản phẩm"
+          style={{
+            maxWidth: '100%',
+            maxHeight: 300,
+            border: '1px solid #ddd',
+            borderRadius: 8,
+            objectFit: 'contain'
+          }}
+        />
+      </div>
+    ) : null;
+  }}
+</Form.Item>
+
       <Row gutter={16}>
         <Col span={10}>
           <Form.Item name="tenSP" label="Tên sản phẩm" rules={[{ required: true }]}>
@@ -73,7 +119,7 @@ const OrderForm = ({ form, initialData, onFinish, isEditing, onCopy }) => {
         </Col>
       </Row>
 
-      <Divider orientation="left">CHI TIẾT LINH KIỆN</Divider>
+      <Divider titlePlacement="left">CHI TIẾT LINH KIỆN</Divider>
 
       <Form.List name="items">
         {(fields, { add, remove }) => (
@@ -137,7 +183,14 @@ const OrderForm = ({ form, initialData, onFinish, isEditing, onCopy }) => {
           <Button type="primary" htmlType="submit" size="large">LƯU ĐƠN HÀNG</Button>
         </Space>
       </div>
+
+
+
     </Form>
+    
+
+
+
   );
 };
 
