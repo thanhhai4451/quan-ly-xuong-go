@@ -142,7 +142,7 @@ const ProductionTransfer = ({ orders, user, db }) => {
           <div style={headerStyle('#f5222d')}><CheckCircleOutlined /> <Text style={{ color: 'white', fontWeight: 600 }}>CẦN NHẬN HÀNG</Text></div>
           <Table dataSource={receiveData} pagination={false} size="small" columns={[
             { title: 'Sản phẩm', render: r => <div><Text strong>{r.orderName}</Text><br/><small>{r.displayName}</small></div> },
-            { title: 'SL', align: 'center', render: r => <Badge count={r.qty} color="#f5222d" /> },
+            { title: 'SL', align: 'center', render: r => <Badge count={r.qty} overflowCount={999999} color="#f5222d" /> },
             { title: 'Lệnh', align: 'right', render: r => <Button type="primary" danger size="small" onClick={() => handleAccept(r.orderFbKey, r)}>NHẬN</Button> }
           ]} />
         </Card>
