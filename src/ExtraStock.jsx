@@ -1,9 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { Table, Card, Tag, Typography, Input, Button, Space, InputNumber, Modal, Radio, message, Row, Col, Divider } from 'antd';
+import { 
+  Table, Card, Tag, Typography, Input, Button, Space, 
+  InputNumber, Modal, Radio, message, Row, Col, Divider, Statistic 
+} from 'antd';
 import { 
   InboxOutlined, SearchOutlined, PlusOutlined, 
   DeleteOutlined, EditOutlined, CloseOutlined,
-  AppstoreOutlined, BuildOutlined
+  AppstoreOutlined, BuildOutlined, BarChartOutlined,
+  HistoryOutlined
 } from '@ant-design/icons';
 import { ref, update, remove } from 'firebase/database';
 import dayjs from 'dayjs';
@@ -22,6 +26,22 @@ const ExtraStock = ({ khoDu, db, user }) => {
 
   const isAdmin = user?.email === 'admin@gmail.com' || user?.email === 'haittpc08155@gmail.com';
 
+  // --- LOGIC THỐNG KÊ ---
+  const stats = useMemo(() => {
+    const list = khoDu ? Object.values(khoDu) : [];
+    const nguyenBo = list.filter(i => i.loai === 'BO').length;
+    const linhKien = list.filter(i => i.loai !== 'BO').length;
+    const tongTon = list.reduce((sum, i) => sum + (Number(i.soLuongTong) || 0), 0);
+    return { total: list.length, nguyenBo, linhKien, tongTon };
+  }, [khoDu]);
+
+  const dataSource = useMemo(() => {
+    const list = khoDu ? Object.entries(khoDu).map(([key, val]) => ({ ...val, key })) : [];
+    if (!searchText) return list;
+    return list.filter(item => item.tenItem?.toLowerCase().includes(searchText.toLowerCase()));
+  }, [khoDu, searchText]);
+
+  // --- CÁC HÀM XỬ LÝ ---
   const handleSave = () => {
     const name = document.getElementById('modal_name')?.value;
     const note = document.getElementById('modal_note')?.value;
@@ -40,11 +60,10 @@ const ExtraStock = ({ khoDu, db, user }) => {
       nguoiCapNhat: user?.email || 'Ẩn danh'
     };
 
-    update(ref(db, `khoDu/${itemKey}`), data)
-      .then(() => {
-        message.success("Đã cập nhật kho thành công!");
-        closeModal();
-      });
+    update(ref(db, `khoDu/${itemKey}`), data).then(() => {
+      message.success("Đã cập nhật kho thành công!");
+      closeModal();
+    });
   };
 
   const closeModal = () => {
@@ -63,53 +82,99 @@ const ExtraStock = ({ khoDu, db, user }) => {
     setDetailQty(1);
   };
 
-  const dataSource = useMemo(() => {
-    const list = khoDu ? Object.entries(khoDu).map(([key, val]) => ({ ...val, key })) : [];
-    if (!searchText) return list;
-    return list.filter(item => item.tenItem?.toLowerCase().includes(searchText.toLowerCase()));
-  }, [khoDu, searchText]);
-
   return (
-    <div style={{ padding: '24px', background: '#f4f7f9', minHeight: '100vh' }}>
-      {/* HEADER ĐẸP */}
-      <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fff', padding: '20px', borderRadius: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.05)' }}>
-        <div>
-          <Title level={2} style={{ margin: 0, color: '#1a3353' }}>
-            <InboxOutlined style={{ color: '#1890ff', marginRight: '12px' }} /> 
-            QUẢN LÝ KHO DƯ
-          </Title>
-          <Text type="secondary">Phân loại linh kiện lẻ và sản phẩm nguyên chiếc</Text>
-        </div>
-        <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => setIsModalOpen(true)} style={{ height: '50px', borderRadius: '8px', fontWeight: 'bold', boxShadow: '0 4px 10px rgba(24,144,255,0.3)' }}>
-          NHẬP HÀNG MỚI
-        </Button>
+    <div style={{ padding: '24px', background: '#f0f2f5', minHeight: '100vh', fontFamily: 'Inter, sans-serif' }}>
+      
+      {/* SECTION 1: THƯ THỐNG KÊ (DASHBOARD) */}
+      <div style={{ marginBottom: '32px' }}>
+        <Row gutter={[16, 16]} align="stretch">
+          <Col xs={24} lg={16}>
+            <div style={{ 
+              background: 'linear-gradient(135deg, #1d39c4 0%, #0050b3 100%)', 
+              padding: '32px', 
+              borderRadius: '24px', 
+              color: '#fff', 
+              height: '100%',
+              boxShadow: '0 10px 30px rgba(29,57,196,0.3)',
+              position: 'relative',
+              overflow: 'hidden'
+            }}>
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <Title level={2} style={{ color: '#fff', margin: 0, display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <BarChartOutlined /> BÁO CÁO TỔNG QUAN
+                </Title>
+                <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: '16px' }}>
+                  Chào mừng, hệ thống ghi nhận có <b>{stats.total}</b> mặt hàng trong kho dư.
+                </Text>
+                
+                <Row gutter={16} style={{ marginTop: '30px' }}>
+                  <Col span={8}>
+                    <Statistic title={<Text style={{color: '#ddd'}}>Nguyên bộ</Text>} value={stats.nguyenBo} valueStyle={{ color: '#fff', fontWeight: 800 }} prefix={<AppstoreOutlined />} />
+                  </Col>
+                  <Col span={8}>
+                    <Statistic title={<Text style={{color: '#ddd'}}>Linh kiện lẻ</Text>} value={stats.linhKien} valueStyle={{ color: '#fff', fontWeight: 800 }} prefix={<BuildOutlined />} />
+                  </Col>
+                  <Col span={8}>
+                    <Statistic title={<Text style={{color: '#ddd'}}>Tổng tồn</Text>} value={stats.tongTon} valueStyle={{ color: '#ffec3d', fontWeight: 800 }} />
+                  </Col>
+                </Row>
+              </div>
+              {/* Trang trí background */}
+              <InboxOutlined style={{ position: 'absolute', right: '-20px', bottom: '-20px', fontSize: '150px', color: 'rgba(255,255,255,0.1)' }} />
+            </div>
+          </Col>
+
+          <Col xs={24} lg={8}>
+            <Card style={{ height: '100%', borderRadius: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', border: 'none', boxShadow: '0 10px 20px rgba(0,0,0,0.05)' }}>
+               <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  <div style={{ background: '#e6f7ff', padding: '16px', borderRadius: '50%', width: '60px', height: '60px', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <PlusOutlined style={{ fontSize: '24px', color: '#1890ff' }} />
+                  </div>
+                  <Title level={4} style={{ margin: 0 }}>Thêm hàng mới?</Title>
+                  <Text type="secondary">Cập nhật nhanh các linh kiện vừa kiểm kê xong.</Text>
+                  <Button type="primary" size="large" block onClick={() => setIsModalOpen(true)} style={{ borderRadius: '12px', height: '45px', fontWeight: 'bold' }}>
+                    NHẬP KHO NGAY
+                  </Button>
+               </Space>
+            </Card>
+          </Col>
+        </Row>
       </div>
 
-      <Card style={{ borderRadius: '16px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-        <Input 
-          placeholder="Tìm tên hàng trong kho..." 
-          prefix={<SearchOutlined />} 
-          size="large"
-          allowClear
-          onChange={e => setSearchText(e.target.value)}
-          style={{ width: '100%', maxWidth: '500px', marginBottom: '24px', borderRadius: '8px' }}
-        />
+      {/* SECTION 2: BẢNG DỮ LIỆU */}
+      <Card style={{ borderRadius: '24px', border: 'none', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+          <Input 
+            placeholder="Tìm tên hàng trong kho..." 
+            prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />} 
+            size="large"
+            allowClear
+            onChange={e => setSearchText(e.target.value)}
+            style={{ width: '100%', maxWidth: '400px', borderRadius: '12px' }}
+          />
+          <Space>
+            <HistoryOutlined style={{ color: '#8c8c8c' }} />
+            <Text type="secondary">Lần cuối: {dayjs().format('HH:mm')}</Text>
+          </Space>
+        </div>
 
         <Table 
           dataSource={dataSource}
           rowKey="key"
-          pagination={{ pageSize: 8 }}
+          pagination={{ pageSize: 7 }}
+          scroll={{ x: 800 }}
           columns={[
             { 
               title: 'SẢN PHẨM', 
               dataIndex: 'tenItem',
-              width: '30%',
               render: (t, r) => (
                 <Space align="start">
-                  {r.loai === 'BO' ? <AppstoreOutlined style={{ fontSize: '20px', color: '#722ed1' }} /> : <BuildOutlined style={{ fontSize: '20px', color: '#1890ff' }} />}
+                  <div style={{ padding: '8px', background: r.loai === 'BO' ? '#f9f0ff' : '#e6f7ff', borderRadius: '8px' }}>
+                    {r.loai === 'BO' ? <AppstoreOutlined style={{ color: '#722ed1' }} /> : <BuildOutlined style={{ color: '#1890ff' }} />}
+                  </div>
                   <div>
-                    <Text strong style={{ fontSize: '16px', color: '#1a3353' }}>{t}</Text><br/>
-                    <Tag color={r.loai === 'BO' ? 'purple' : 'blue'} style={{ borderRadius: '4px', marginTop: '4px' }}>
+                    <Text strong style={{ fontSize: '15px' }}>{t}</Text><br/>
+                    <Tag bordered={false} color={r.loai === 'BO' ? 'purple' : 'blue'}>
                       {r.loai === 'BO' ? 'NGUYÊN BỘ' : 'LINH KIỆN'}
                     </Tag>
                   </div>
@@ -119,20 +184,22 @@ const ExtraStock = ({ khoDu, db, user }) => {
             { 
                 title: 'CHI TIẾT TRONG KHO', 
                 render: r => (
-                  <div style={{ background: r.chiTietList ? '#f0faff' : 'transparent', padding: r.chiTietList ? '10px' : '0', borderRadius: '8px' }}>
+                  <div style={{ background: r.chiTietList ? '#fafafa' : 'transparent', padding: r.chiTietList ? '10px' : '0', borderRadius: '12px' }}>
                     {r.chiTietList ? (
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      <Row gutter={[8, 8]}>
                         {r.chiTietList.map((item, idx) => (
-                          <div key={idx} style={{ fontSize: '13px' }}>
-                            <Badge count={item.qty} color="#1890ff" style={{ marginRight: '8px' }} />
-                            <Text>{item.name}</Text>
-                          </div>
+                          <Col span={12} key={idx}>
+                            <div style={{ fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                              <Badge count={item.qty} color="#52c41a" />
+                              <Text ellipsis>{item.name}</Text>
+                            </div>
+                          </Col>
                         ))}
-                      </div>
+                      </Row>
                     ) : (
-                      <div style={{ display: 'inline-block', background: '#fff7e6', padding: '8px 16px', borderRadius: '8px', border: '1px solid #ffd591' }}>
-                        <Text type="warning" strong style={{ fontSize: '16px' }}>Số lượng: {r.soLuongTong || 0}</Text>
-                      </div>
+                      <Tag color="warning" style={{ fontSize: '14px', padding: '4px 12px', borderRadius: '6px' }}>
+                        Số lượng: <b>{r.soLuongTong || 0}</b>
+                      </Tag>
                     )}
                   </div>
                 )
@@ -147,14 +214,14 @@ const ExtraStock = ({ khoDu, db, user }) => {
               align: 'right',
               render: r => (
                 <Space>
-                  <Button variant="filled" color="primary" icon={<EditOutlined />} onClick={() => { 
+                  <Button type="text" icon={<EditOutlined />} onClick={() => { 
                     setEditingItem(r); 
                     setDetailsList(r.chiTietList || []); 
                     setTongSoLuong(r.soLuongTong || 1);
                     setIsModalOpen(true); 
-                  }}>Sửa</Button>
+                  }} />
                   {isAdmin && <Button danger type="text" icon={<DeleteOutlined />} onClick={() => {
-                    Modal.confirm({ title: 'Xác nhận xóa món này?', content: 'Dữ liệu sẽ không thể khôi phục.', okText: 'Xóa luôn', cancelText: 'Để xem lại', okType: 'danger', onOk: () => remove(ref(db, `khoDu/${r.key}`)) });
+                    Modal.confirm({ title: 'Xác nhận xóa?', content: 'Dữ liệu này sẽ mất vĩnh viễn.', okText: 'Xóa', okType: 'danger', onOk: () => remove(ref(db, `khoDu/${r.key}`)) });
                   }} />}
                 </Space>
               )
@@ -163,61 +230,50 @@ const ExtraStock = ({ khoDu, db, user }) => {
         />
       </Card>
 
-      {/* MODAL CẢI TIẾN */}
+      {/* MODAL GIỮ NGUYÊN NHƯ CŨ (ĐÃ ĐẸP) */}
       <Modal
-        title={<Title level={4} style={{ margin: 0 }}>{editingItem ? "📝 CẬP NHẬT THÔNG TIN" : "📦 NHẬP KHO MỚI"}</Title>}
+        title={editingItem ? "📝 CẬP NHẬT THÔNG TIN" : "📦 NHẬP KHO MỚI"}
         open={isModalOpen}
         onCancel={closeModal}
         onOk={handleSave}
-        width={650}
-        okText="Lưu vào kho"
-        cancelText="Đóng"
-        destroyOnClose
+        width={600}
         centered
       >
-        <Divider style={{ margin: '12px 0' }} />
+        <Divider />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <Row gutter={20}>
-            <Col span={16}>
-              <Text strong>Tên sản phẩm/Mã hàng:</Text>
-              <Input id="modal_name" size="large" defaultValue={editingItem?.tenItem} placeholder="Ví dụ: Ghế ăn dặm loại 1" style={{ marginTop: '8px', borderRadius: '8px' }} />
-            </Col>
-            <Col span={8}>
-              <Text strong>Số lượng tổng:</Text>
-              <InputNumber min={1} size="large" value={tongSoLuong} onChange={setTongSoLuong} style={{ width: '100%', marginTop: '8px', borderRadius: '8px' }} />
-            </Col>
-          </Row>
+            <Row gutter={16}>
+                <Col span={16}>
+                    <Text strong>Tên sản phẩm/Mã hàng:</Text>
+                    <Input id="modal_name" size="large" defaultValue={editingItem?.tenItem} style={{ marginTop: '8px', borderRadius: '8px' }} />
+                </Col>
+                <Col span={8}>
+                    <Text strong>Tổng tồn:</Text>
+                    <InputNumber min={1} size="large" value={tongSoLuong} onChange={setTongSoLuong} style={{ width: '100%', marginTop: '8px', borderRadius: '8px' }} />
+                </Col>
+            </Row>
 
-          <div style={{ background: '#f9f9f9', padding: '15px', borderRadius: '12px' }}>
-            <Text strong>Phân loại hàng dư:</Text><br/>
-            <Radio.Group name="modal_type" defaultValue={editingItem?.loai || 'CHI_TIET'} style={{ marginTop: '10px' }}>
-              <Radio.Button value="CHI_TIET" style={{ borderRadius: '8px 0 0 8px' }}>🔍 LINH KIỆN LẺ</Radio.Button>
-              <Radio.Button value="BO" style={{ borderRadius: '0 8px 8px 0' }}>📦 NGUYÊN BỘ</Radio.Button>
+            <Radio.Group name="modal_type" defaultValue={editingItem?.loai || 'CHI_TIET'} buttonStyle="solid">
+                <Radio.Button value="CHI_TIET">LINH KIỆN LẺ</Radio.Button>
+                <Radio.Button value="BO">NGUYÊN BỘ</Radio.Button>
             </Radio.Group>
-          </div>
 
-          <Card size="small" title={<Text strong><BuildOutlined /> Danh sách chi tiết lẻ (nếu dư lẻ)</Text>} style={{ borderRadius: '12px', border: '1px solid #e8e8e8' }}>
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
-              <Input value={detailName} onChange={e => setDetailName(e.target.value)} placeholder="Tên linh kiện (vd: Tay vịn)" style={{ flex: 3 }} />
-              <InputNumber value={detailQty} onChange={setDetailQty} min={1} style={{ flex: 1 }} />
-              <Button type="primary" ghost icon={<PlusOutlined />} onClick={addDetail}>Thêm</Button>
-            </div>
-            
-            <div style={{ maxHeight: '150px', overflowY: 'auto' }}>
-              {detailsList.map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', background: '#fff', marginBottom: '6px', borderRadius: '6px', border: '1px solid #f0f0f0' }}>
-                  <Text><Badge status="processing" /> {item.name}: <Text strong color="blue">{item.qty}</Text></Text>
-                  <Button type="text" danger size="small" icon={<CloseOutlined />} onClick={() => setDetailsList(detailsList.filter((_, i) => i !== idx))} />
+            <Card size="small" title="Linh kiện chi tiết" style={{ borderRadius: '12px' }}>
+                <Space style={{ marginBottom: '10px' }}>
+                    <Input value={detailName} onChange={e => setDetailName(e.target.value)} placeholder="Tên món" />
+                    <InputNumber value={detailQty} onChange={setDetailQty} min={1} />
+                    <Button type="primary" icon={<PlusOutlined />} onClick={addDetail} />
+                </Space>
+                <div style={{ maxHeight: '120px', overflowY: 'auto' }}>
+                    {detailsList.map((item, idx) => (
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0' }}>
+                            <span>{item.name} (x{item.qty})</span>
+                            <Button type="text" danger icon={<CloseOutlined />} onClick={() => setDetailsList(detailsList.filter((_, i) => i !== idx))} />
+                        </div>
+                    ))}
                 </div>
-              ))}
-              {detailsList.length === 0 && <Text type="disabled" style={{ display: 'block', textAlign: 'center', padding: '10px' }}>Không có linh kiện lẻ</Text>}
-            </div>
-          </Card>
+            </Card>
 
-          <div>
-            <Text strong>Ghi chú nguồn gốc:</Text>
-            <Input.TextArea id="modal_note" defaultValue={editingItem?.ghiChu} rows={3} placeholder="Ví dụ: Dư từ đơn hàng anh Bình tháng 1" style={{ marginTop: '8px', borderRadius: '8px' }} />
-          </div>
+            <Input.TextArea id="modal_note" defaultValue={editingItem?.ghiChu} rows={2} placeholder="Ghi chú thêm..." />
         </div>
       </Modal>
     </div>
@@ -225,18 +281,10 @@ const ExtraStock = ({ khoDu, db, user }) => {
 };
 
 // Component Badge nhỏ phụ trợ
-const Badge = ({ count, color, style }) => (
+const Badge = ({ count, color }) => (
   <span style={{ 
-    backgroundColor: color, 
-    color: '#fff', 
-    padding: '2px 8px', 
-    borderRadius: '10px', 
-    fontSize: '12px',
-    fontWeight: 'bold',
-    ...style 
-  }}>
-    {count}
-  </span>
+    backgroundColor: color, color: '#fff', padding: '1px 6px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold' 
+  }}>{count}</span>
 );
 
 export default ExtraStock;

@@ -365,16 +365,79 @@ const App = () => {
   const handleLogout = () => signOut(auth).then(() => message.info("Đã đăng xuất!"));
 
   const handleDeliverOrder = (fbKey) => {
+    const order = orders.find(o => o.fbKey === fbKey);
+    
     Modal.confirm({
       title: 'Xác nhận giao hàng?',
-      content: 'Đơn hàng này sẽ được chuyển sang mục Đã Giao.',
+      content: 'Đơn hàng này sẽ được chuyển sang mục Đã Giao. Hàng dư (nếu có) sẽ tự động chuyển vào Kho hàng dư.',
       okText: 'Xác nhận',
       cancelText: 'Hủy',
       onOk: () => {
-        update(ref(db, `orders/${fbKey}`), {
+        // Phát hiện hàng dư từ TẤT CẢ các công đoạn
+        const duDetails = []; // Danh sách chi tiết dư
+        const STEPS = ['phoi', 'dinhHinh', 'lapRap', 'nham', 'son', 'dongGoi'];
+
+        if (order.chiTiet && order.chiTiet.length > 0) {
+          order.chiTiet.forEach(item => {
+            const can = item.can || 0;
+            
+            // Kiểm tra hàng dư ở mỗi công đoạn
+            // DƯ = số hoàn thành lớn hơn số cần
+            STEPS.forEach(step => {
+              const hoanthanh = item.tienDo?.[step] || 0;
+              const du = hoanthanh - can;
+              
+              if (du > 0) {
+                duDetails.push({
+                  name: `${item.name} (Từ ${step.toUpperCase()}: ${hoanthanh} - ${can})`,
+                  qty: du,
+                  loai: 'CHI_TIET'
+                });
+              }
+            });
+          });
+        }
+
+        // Tính dư bộ (nếu soLuongDongGoi < tongSoBo)
+        const tongBo = Number(order.tongSoBo) || 0;
+        const dongGoi = Number(order.soLuongDongGoi) || 0;
+        let duBo = 0;
+        
+        if (dongGoi < tongBo) {
+          duBo = tongBo - dongGoi;
+        }
+
+        // Lưu hàng dư vào khoDu nếu có
+        let updates = {
           daGiao: true,
           ngayThucTeGiao: dayjs().format('DD/MM/YYYY HH:mm')
-        }).then(() => message.success("Đã giao hàng thành công!"));
+        };
+
+        if (duDetails.length > 0 || duBo > 0) {
+          const khoDuKey = `du_${order.tenSP.toLowerCase().replace(/\s+/g, '_')}_${fbKey.substring(0, 6)}`;
+          const khoDuData = {
+            tenItem: `[DƯ] ${order.tenSP}`,
+            loai: duBo > 0 ? 'BO' : 'CHI_TIET',
+            ghiChu: `Dư từ đơn hàng ngày ${dayjs().format('DD/MM/YYYY')}. Dư từ các công đoạn: ${duDetails.length} loại chi tiết`,
+            soLuongTong: duBo > 0 ? duBo : duDetails.reduce((sum, d) => sum + d.qty, 0),
+            chiTietList: duDetails.length > 0 ? duDetails : null,
+            ngayCapNhat: dayjs().format('DD/MM/YYYY HH:mm'),
+            nguoiCapNhat: user?.email || 'Ẩn danh',
+            donHangGoc: fbKey // Lưu lại tham chiếu đơn hàng gốc
+          };
+
+          update(ref(db, `khoDu/${khoDuKey}`), khoDuData);
+        }
+
+        update(ref(db, `orders/${fbKey}`), updates)
+          .then(() => {
+            if (duDetails.length > 0 || duBo > 0) {
+              message.success(`✅ Giao hàng thành công! ${duDetails.length > 0 ? duDetails.length + ' loại chi tiết dư' : duBo + ' bộ dư'} đã lưu vào Kho hàng dư.`);
+            } else {
+              message.success("✅ Đã giao hàng thành công!");
+            }
+          })
+          .catch(() => message.error("Lỗi kết nối!"));
       }
     });
   };
