@@ -12,7 +12,7 @@ import {
   PlusOutlined, DeleteOutlined, BuildOutlined, ClockCircleOutlined,
   CarryOutOutlined, SearchOutlined, HistoryOutlined, AlertOutlined, AppstoreOutlined,
   UserOutlined, LogoutOutlined, LockOutlined, EditOutlined, BellOutlined, CheckCircleOutlined,
-  SendOutlined, SwapOutlined, InboxOutlined, EyeOutlined, PictureOutlined
+  SendOutlined, SwapOutlined, InboxOutlined, EyeOutlined, PictureOutlined,DatabaseOutlined
 
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -22,6 +22,7 @@ import { ref, push, onValue, remove, update } from "firebase/database";
 import { signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 import ProductionTransfer from './ProductionTransfer'; // Lưu ý: để chung thư mục với App.js
 import OrderForm from './OrderForm'; // Import cái file vừa tạo
+import InventoryManagement from './InventoryManagement'; // Import file vừa tạo
 const { Panel } = Collapse;
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -253,7 +254,7 @@ const App = () => {
 
     form.setFieldsValue({
       ...order,
-       hinhAnh: order.hinhAnh || "",
+      hinhAnh: order.hinhAnh || "",
       ngayGiao: dayjs(order.ngayGiao, 'DD/MM/YYYY'),
       deadlineDongGoi: order.deadlineDongGoi ? dayjs(order.deadlineDongGoi) : null,
       items: initialItems
@@ -366,7 +367,7 @@ const App = () => {
 
   const handleDeliverOrder = (fbKey) => {
     const order = orders.find(o => o.fbKey === fbKey);
-    
+
     Modal.confirm({
       title: 'Xác nhận giao hàng?',
       content: 'Đơn hàng này sẽ được chuyển sang mục Đã Giao. Hàng dư (nếu có) sẽ tự động chuyển vào Kho hàng dư.',
@@ -380,13 +381,13 @@ const App = () => {
         if (order.chiTiet && order.chiTiet.length > 0) {
           order.chiTiet.forEach(item => {
             const can = item.can || 0;
-            
+
             // Kiểm tra hàng dư ở mỗi công đoạn
             // DƯ = số hoàn thành lớn hơn số cần
             STEPS.forEach(step => {
               const hoanthanh = item.tienDo?.[step] || 0;
               const du = hoanthanh - can;
-              
+
               if (du > 0) {
                 duDetails.push({
                   name: `${item.name} (Từ ${step.toUpperCase()}: ${hoanthanh} - ${can})`,
@@ -402,7 +403,7 @@ const App = () => {
         const tongBo = Number(order.tongSoBo) || 0;
         const dongGoi = Number(order.soLuongDongGoi) || 0;
         let duBo = 0;
-        
+
         if (dongGoi < tongBo) {
           duBo = tongBo - dongGoi;
         }
@@ -1299,6 +1300,17 @@ const App = () => {
             children: (
               <ExtraStock
                 khoDu={khoDu}
+                db={db}
+                user={user}
+                isAdmin={isAdmin}
+              />
+            )
+          },
+          {
+            key: 'inventory',
+            label: <b><DatabaseOutlined /> QUẢN LÝ NHẬP KHO</b>,
+            children: (
+              <InventoryManagement
                 db={db}
                 user={user}
                 isAdmin={isAdmin}
