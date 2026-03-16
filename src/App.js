@@ -329,18 +329,17 @@ const App = () => {
         dongGoi: "ĐÓNG GÓI",
       };
 
-      const currentIndex = steps.indexOf(to);
-      const prevStep = currentIndex > 0 ? steps[currentIndex - 1] : null;
-      if (prevStep) {
-        const prevValSum = order.chiTiet
-          .filter((it) => it.groupName === groupName)
-          .reduce((acc, it) => acc + Number(it.tienDo?.[prevStep] || 0), 0);
-
-        if (prevValSum === 0) {
-          message.error(
-            `Phải hoàn thành ${stepLabels[prevStep]} trước khi cập nhật ${stepLabels[to]}.`,
-          );
-          return;
+      const stepIndex = steps.indexOf(to);
+      if (stepIndex > 0) {
+        const prevStep = steps[stepIndex - 1];
+        const groupItems = order.chiTiet.filter((it) => it.groupName === groupName);
+        const hasSkipped = groupItems.some((it) => (it.skipSteps || []).includes(prevStep));
+        if (!hasSkipped) {
+          const prevValSum = groupItems.reduce((acc, it) => acc + Number(it.tienDo?.[prevStep] || 0), 0);
+          if (val > prevValSum) {
+            message.error(`Không thể nhập số lượng lớn hơn tổng tổ trước (${stepLabels[prevStep]}: ${prevValSum})`);
+            return;
+          }
         }
       }
 
@@ -383,22 +382,29 @@ const App = () => {
       const item = order.chiTiet.find((i) => i.key === detailKey);
       if (!item) return;
 
-      const hienTai = item.tienDo?.[to] || 0;
-      if (val === hienTai) return;
-
-      // ... Logic kiểm tra tổ trước/sau giữ nguyên ...
       const steps = ["phoi", "dinhHinh", "lapRap", "nham", "son", "dongGoi"];
-      const currentIndex = steps.indexOf(to);
-      if (currentIndex > 0) {
-        const prevStep = steps[currentIndex - 1];
-        const prevVal = item.tienDo?.[prevStep] || 0;
-        if (val > prevVal && !item.skipSteps?.includes(prevStep)) {
-          message.error(
-            `Tổ ${to.toUpperCase()} (${val}) không được lớn hơn tổ ${prevStep.toUpperCase()} (${prevVal})!`,
-          );
-          return;
+      const stepLabels = {
+        phoi: "PHÔI",
+        dinhHinh: "ĐỊNH HÌNH",
+        lapRap: "LẮP RÁP",
+        nham: "NHÁM",
+        son: "SƠN",
+        dongGoi: "ĐÓNG GÓI",
+      };
+      const stepIndex = steps.indexOf(to);
+      if (stepIndex > 0) {
+        const prevStep = steps[stepIndex - 1];
+        if (!(item.skipSteps || []).includes(prevStep)) {
+          const prevVal = Number(item.tienDo?.[prevStep] || 0);
+          if (val > prevVal) {
+            message.error(`Không thể nhập số lượng lớn hơn tổ trước (${stepLabels[prevStep]}: ${prevVal})`);
+            return;
+          }
         }
       }
+
+      const hienTai = item.tienDo?.[to] || 0;
+      if (val === hienTai) return;
 
       const newChiTiet = order.chiTiet.map((it) => {
         if (it.key === detailKey) {
@@ -483,6 +489,7 @@ const App = () => {
               }
             });
           });
+
         }
 
         // Tính dư bộ (nếu soLuongDongGoi < tongSoBo)
