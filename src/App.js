@@ -770,7 +770,7 @@ const App = () => {
           );
           if (hasA && !hasB) return -1;
           if (!hasA && hasB) return 1;
-          return 0; // Giữ thứ tự ban đầu nếu cả hai đều có hoặc không
+          return 0; 
         }),
       choGiao: filtered.filter(
         (o) => !o.daGiao && calculateOrderProgress(o) >= 100,
@@ -790,10 +790,8 @@ const App = () => {
         { id: "dongGoi", label: "ĐÓNG GÓI" },
       ];
 
-      // BỎ PHÂN QUYỀN: Lấy tất cả các bước để hiển thị cột
       const visibleSteps = STEPS_CONFIG.map((s) => s.id);
 
-      // 4. Các cột cố định (Chi tiết, Cần cái, Cụm, Cần bộ)
       const baseCols = [
         {
           title: "CHI TIẾT",
@@ -902,7 +900,6 @@ const App = () => {
         },
       ];
 
-      // 5. Kết hợp với các cột tổ
       return [
         ...baseCols,
         ...visibleSteps.map((step) => ({
@@ -956,7 +953,6 @@ const App = () => {
             const val = Number(record.tienDo?.[step]) || 0;
             const remaining = targetNeed - val;
 
-            // Nếu bước trước chưa có số lượng thì không cho nhập bước sau
             const prevStep = stepsOrder
               .slice(0, stepsOrder.indexOf(step))
               .reverse()
@@ -975,7 +971,6 @@ const App = () => {
 
             const canEdit = !prevStep || prevStepVal > 0;
 
-            // Render Input và thông báo thiếu/đủ
             return (
               <div style={{ padding: "2px" }}>
                 {isGroupStep && record.groupName && (
