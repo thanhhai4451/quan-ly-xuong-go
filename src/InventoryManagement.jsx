@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+
+
 import { 
   Table, Card, Button, Input, Space, Modal, Form, 
   InputNumber, Select, message, Tag, Typography, 
@@ -10,6 +12,7 @@ import {
   ArrowRightOutlined, StockOutlined, LayoutOutlined,
   SearchOutlined, WarningOutlined 
 } from "@ant-design/icons";
+
 
 import dayjs from "dayjs";
 import jsPDF from "jspdf";
@@ -83,6 +86,7 @@ const QuanLyVatTuFull = () => {
   const [multiExportForm] = Form.useForm();
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [isMultiExportOpen, setIsMultiExportOpen] = useState(false);
+  const [selectedHistoryKeys, setSelectedHistoryKeys] = useState([]);
 
   // 1. REALTIME ENGINE
   useEffect(() => {
@@ -128,31 +132,193 @@ const QuanLyVatTuFull = () => {
   const lowStockCount = items.filter(i => i.stock <= i.minStock).length;
 
   // 3. PDF EXPORT (Clean Version)
-  const exportToPDF = (record) => {
+// --- NÂNG CẤP PDF ENGINE ---
+
+const exportToPDF = (record) => {
+  const doc = new jsPDF();
+
+  // 1. Cấu hình Font (Sư Phụ nên dùng thư viện hỗ trợ Font tiếng Việt hoặc dùng hàm clean như cũ nhưng trình bày đẹp hơn)
+  // Ở đây con vẫn dùng hàm clean(str) để đảm bảo không lỗi, nhưng thiết kế lại cực đẹp
+  const clean = (str) => str ? str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D') : "";
+
+  // 2. Background Header (Xanh chuyên nghiệp)
+  doc.setFillColor(0, 51, 153); 
+  doc.rect(0, 0, 210, 50, 'F');
+
+  // 3. Tiêu đề công ty & Phiếu
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(10);
+  doc.text(clean("MAH FURNITURE - WOOD MANUFACTURING"), 20, 15); // Tên xưởng của Sư Phụ
+  
+  doc.setFontSize(24);
+  doc.setFont(undefined, 'bold');
+  doc.text(clean("PHIEU XUAT KHO"), 105, 35, { align: "center" });
+
+  // 4. Thông tin chung (Dưới header)
+  doc.setTextColor(40, 40, 40);
+  doc.setFontSize(11);
+  doc.setFont(undefined, 'normal');
+  
+  // Vẽ khung bo góc cho thông tin
+  doc.setDrawColor(200, 200, 200);
+  doc.roundedRect(15, 55, 180, 25, 3, 3, 'S');
+
+  doc.text(clean(`Ma chung tu: PXK-${record.id.toString().substring(0,8).toUpperCase()}`), 20, 62);
+  doc.text(clean(`Ngay xuat: ${record.time}`), 20, 70);
+  
+  doc.setFont(undefined, 'bold');
+  doc.text(clean(`NGUOI NHAN: ${clean(record.receiver).toUpperCase()}`), 120, 62);
+  doc.setFont(undefined, 'normal');
+  doc.text(clean(`Ly do: ${clean(record.reason)}`), 120, 70);
+
+  // 5. Bảng vật tư (Dùng autoTable với style hiện đại)
+  autoTable(doc, {
+    startY: 85,
+    head: [[clean('MA VAT TU'), clean('TEN CHI TIET VAT TU'), clean('SO LUONG'), clean('DON VI')]],
+    body: [[record.code, clean(record.name).toUpperCase(), record.qty, clean(record.unit).toUpperCase()]],
+    theme: 'grid',
+    headStyles: { 
+        fillColor: [0, 51, 153], 
+        textColor: [255, 255, 255],
+        fontSize: 11,
+        halign: 'center'
+    },
+    bodyStyles: { 
+        fontSize: 10,
+        cellPadding: 5
+    },
+    columnStyles: {
+      0: { cellWidth: 30, halign: 'center' },
+      2: { cellWidth: 30, halign: 'center' },
+      3: { cellWidth: 25, halign: 'center' },
+    }
+  });
+
+  // 6. Khu vực ký tên (Chuyên nghiệp hơn)
+  const finalY = doc.lastAutoTable.finalY + 20;
+  
+  doc.setFont(undefined, 'bold');
+  doc.text(clean("NGUOI LAP PHIEU"), 45, finalY, { align: "center" });
+  doc.text(clean("NGUOI NHAN HANG"), 155, finalY, { align: "center" });
+  
+  doc.setFont(undefined, 'italic');
+  doc.setFontSize(9);
+  doc.text(clean("(Ky va ghi ro ho ten)"), 45, finalY + 5, { align: "center" });
+  doc.text(clean("(Ky va ghi ro ho ten)"), 155, finalY + 5, { align: "center" });
+
+  // 7. Chân trang
+  doc.setTextColor(150, 150, 150);
+  doc.text(clean("He thong quan ly kho MAH v3.1 Pro"), 105, 285, { align: "center" });
+
+  doc.save(`PXK_${record.code}_${dayjs().format('DDMMYY')}.pdf`);
+};
+
+  // 3.1 PDF EXPORT MULTIPLE RECORDS (Daily Report)
+  const exportMultipleHistoryToPDF = () => {
+    if (!selectedHistoryKeys.length) {
+      message.warning('Chọn ít nhất một phiếu xuất để xuất báo cáo.');
+      return;
+    }
+
+    const selectedRecords = filteredHistory.filter(r => selectedHistoryKeys.includes(r.key));
     const doc = new jsPDF();
     const clean = (str) => str ? str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D') : "";
     
-    doc.setFillColor(22, 119, 255); 
-    doc.rect(0, 0, 210, 40, 'F');
+    // Header
+    doc.setFillColor(0, 51, 153); 
+    doc.rect(0, 0, 210, 50, 'F');
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(22);
-    doc.text("PHIEU XUAT KHO", 105, 25, { align: "center" });
+    doc.setFontSize(10);
+    doc.text(clean("MAH FURNITURE - WOOD MANUFACTURING"), 20, 15);
     
+    doc.setFontSize(24);
+    doc.setFont(undefined, 'bold');
+    doc.text(clean("BAO CAO XUAT KHO"), 105, 35, { align: "center" });
+
+    // Thông tin chung
     doc.setTextColor(40, 40, 40);
     doc.setFontSize(11);
-    doc.text(`Ma chung tu: PXK-${record.id}`, 20, 55);
-    doc.text(`Ngay xuat: ${record.time}`, 20, 62);
-    doc.text(`Nguoi nhan: ${clean(record.receiver).toUpperCase()}`, 130, 62);
+    doc.setFont(undefined, 'normal');
+    
+    doc.setDrawColor(200, 200, 200);
+    doc.roundedRect(15, 55, 180, 25, 3, 3, 'S');
+
+    doc.text(clean(`Ngay bao cao: ${dayjs().format('DD/MM/YYYY')}`), 20, 62);
+    doc.text(clean(`Tong phieu xuat: ${selectedRecords.length}`), 20, 70);
+    
+    doc.setFont(undefined, 'bold');
+    doc.text(clean(`In luc: ${dayjs().format('DD/MM/YYYY HH:mm')}`), 120, 62);
+    doc.setFont(undefined, 'normal');
+    doc.text(clean(`Nguoi lap bao cao: [Ten nguoi lap]`), 120, 70);
+
+    // Prepare table data
+    const tableData = selectedRecords.map(r => [
+      r.time,
+      clean(r.code),
+      clean(r.name),
+      r.qty,
+      clean(r.unit),
+      clean(r.receiver),
+      clean(r.reason || '')
+    ]);
 
     autoTable(doc, {
-      startY: 75,
-      head: [['Ma Vat Tu', 'Ten Vat Tu', 'So Luong', 'Don Vi']],
-      body: [[record.code, clean(record.name), record.qty, clean(record.unit)]],
-      headStyles: { fillColor: [22, 119, 255] }
+      startY: 90,
+      head: [[clean('THỜI GIAN'), clean('MÃ VẬT TƯ'), clean('TÊN VẬT TƯ'), clean('SL'), clean('ĐV'), clean('NGƯỜI NHẬN'), clean('LÝ DO')]],
+      body: tableData,
+      headStyles: { 
+        fillColor: [0, 51, 153], 
+        textColor: [255, 255, 255],
+        fontSize: 11,
+        halign: 'center'
+      },
+      bodyStyles: { 
+        fontSize: 10,
+        cellPadding: 5
+      },
+      columnStyles: {
+        0: { halign: 'center' },
+        3: { halign: 'center' },
+        4: { halign: 'center' }
+      },
+      margin: { left: 10, right: 10 },
+      didDrawPage: (data) => {
+        // Footer
+        const pageSize = doc.internal.pageSize;
+        const pageHeight = pageSize.getHeight();
+        doc.setFontSize(9);
+        doc.text(clean(`Trang ${doc.internal.pages.length - 1}`), pageSize.getWidth() / 2, pageHeight - 10, { align: 'center' });
+      }
     });
 
-    doc.text("Nguoi nhan ky ten", 160, doc.lastAutoTable.finalY + 25, { align: "center" });
-    doc.save(`Phieu_Xuat_${record.id}.pdf`);
+    // Summary
+    const finalY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'bold');
+    doc.text(clean(`Tổng số phiếu: ${selectedRecords.length}`), 20, finalY);
+    
+    const totalQty = selectedRecords.reduce((sum, r) => sum + Number(r.qty || 0), 0);
+    doc.text(clean(`Tổng số lượng xuất: ${totalQty}`), 20, finalY + 7);
+
+    const receivers = [...new Set(selectedRecords.map(r => clean(r.receiver)))];
+    doc.text(clean(`Người liên quan: ${receivers.join(', ')}`), 20, finalY + 14);
+
+    // Khu vực ký tên
+    const signY = finalY + 30;
+    doc.setFont(undefined, 'bold');
+    doc.text(clean("NGUOI LAP BAO CAO"), 45, signY, { align: "center" });
+    doc.text(clean("NGUOI DUYET"), 155, signY, { align: "center" });
+    
+    doc.setFont(undefined, 'italic');
+    doc.setFontSize(9);
+    doc.text(clean("(Ky va ghi ro ho ten)"), 45, signY + 5, { align: "center" });
+    doc.text(clean("(Ky va ghi ro ho ten)"), 155, signY + 5, { align: "center" });
+
+    // Chân trang
+    doc.setTextColor(150, 150, 150);
+    doc.text(clean("He thong quan ly kho MAH v3.1 Pro"), 105, 285, { align: "center" });
+
+    doc.save(`Bao_Cao_Xuat_Kho_${dayjs().format('DD-MM-YYYY')}.pdf`);
   };
 
   // 4. HANDLERS
@@ -430,23 +596,40 @@ const handleSaveMaterial = async (values) => {
                 label: <span style={{ fontWeight: 600, padding: '0 15px' }}><HistoryOutlined /> NHẬT KÝ XUẤT</span>,
                 children: (
                   <div style={{ padding: '24px' }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20, justifyContent: 'space-between' }}>
-                      <Input
-                        placeholder="Tìm theo tên, mã, hoặc người nhận..."
-                        prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
-                        style={{ width: 320, borderRadius: '10px' }}
-                        value={historySearch}
-                        onChange={(e) => setHistorySearch(e.target.value)}
-                        allowClear
-                      />
-                      <DatePicker.RangePicker
-                        value={historyRange}
-                        onChange={(dates) => setHistoryRange(dates)}
-                        style={{ minWidth: 280, maxWidth: 360, width: '100%' }}
-                        allowClear
-                      />
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 20, justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: 12, flex: 1 }}>
+                        <Input
+                          placeholder="Tìm theo tên, mã, hoặc người nhận..."
+                          prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+                          style={{ width: 320, borderRadius: '10px' }}
+                          value={historySearch}
+                          onChange={(e) => setHistorySearch(e.target.value)}
+                          allowClear
+                        />
+                        <DatePicker.RangePicker
+                          value={historyRange}
+                          onChange={(dates) => setHistoryRange(dates)}
+                          style={{ minWidth: 280, maxWidth: 360, width: '100%' }}
+                          allowClear
+                        />
+                      </div>
+                      <Button 
+                        type="primary" 
+                        icon={<FilePdfOutlined />}
+                        onClick={exportMultipleHistoryToPDF}
+                        disabled={!selectedHistoryKeys.length}
+                        style={{ fontWeight: 600 }}
+                      >
+                        XUẤT PDF ({selectedHistoryKeys.length})
+                      </Button>
                     </div>
                     <Table 
+                      rowSelection={{ 
+                        selectedRowKeys: selectedHistoryKeys, 
+                        onChange: setSelectedHistoryKeys,
+                        type: 'checkbox'
+                      }}
+                      rowKey="key"
                       dataSource={filteredHistory} 
                       columns={[
                         { title: 'THỜI GIAN', dataIndex: 'time', width: 180 },
