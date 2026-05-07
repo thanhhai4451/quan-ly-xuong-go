@@ -84,8 +84,11 @@ const QuanLyVatTuFull = () => {
   const [form] = Form.useForm();
   const [exportForm] = Form.useForm();
   const [multiExportForm] = Form.useForm();
+  const [addStockForm] = Form.useForm();
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [isMultiExportOpen, setIsMultiExportOpen] = useState(false);
+  const [isAddStockOpen, setIsAddStockOpen] = useState(false);
+  const [addStockItem, setAddStockItem] = useState(null);
   const [selectedHistoryKeys, setSelectedHistoryKeys] = useState([]);
 
   // 1. REALTIME ENGINE
@@ -306,8 +309,8 @@ const exportToPDF = (record) => {
     // Khu vực ký tên
     const signY = finalY + 30;
     doc.setFont(undefined, 'bold');
-    doc.text(clean("NGUOI LAP BAO CAO"), 45, signY, { align: "center" });
-    doc.text(clean("NGUOI DUYET"), 155, signY, { align: "center" });
+    doc.text(clean("NGƯỜI NHẬN"), 45, signY, { align: "center" });
+    doc.text(clean("THỦ KHO"), 155, signY, { align: "center" });
     
     doc.setFont(undefined, 'italic');
     doc.setFontSize(9);
@@ -357,6 +360,32 @@ const handleSaveMaterial = async (values) => {
       message.error("Có lỗi xảy ra: " + e.message); 
     }
   };
+
+  const openAddStockModal = (item) => {
+    setAddStockItem(item);
+    setIsAddStockOpen(true);
+    addStockForm.resetFields();
+    addStockForm.setFieldsValue({ qty: 1 });
+  };
+
+  const handleAddStock = async (values) => {
+    if (!addStockItem) return;
+    try {
+      const addedQty = Number(values.qty || 0);
+      if (addedQty <= 0) {
+        message.error('Số lượng cần lớn hơn 0.');
+        return;
+      }
+      const newStock = Number(addStockItem.stock || 0) + addedQty;
+      await update(ref(db, `materials/${addStockItem.key}`), { stock: newStock });
+      setIsAddStockOpen(false);
+      setAddStockItem(null);
+      message.success(`Đã nhập thêm ${addedQty} ${addStockItem.unit} cho mã ${addStockItem.code}.`);
+    } catch (e) {
+      message.error('Có lỗi khi nhập thêm kho: ' + e.message);
+    }
+  };
+
   const openMultiExport = () => {
     if (!selectedItems.length) {
       message.warning('Chọn ít nhất một vật tư để xuất cùng lúc.');
@@ -497,7 +526,10 @@ const handleSaveMaterial = async (values) => {
           <Tooltip title="Xuất kho">
             <Button type="primary" shape="round" icon={<ArrowRightOutlined />} onClick={() => handleExport(r)}>Xuất</Button>
           </Tooltip>
-          <Button variant="text" icon={<EditOutlined />} onClick={() => { setEditingItem(r); form.setFieldsValue(r); setIsModalOpen(true); }} />
+          <Tooltip title="Nhập thêm kho">
+            <Button type="default" shape="round" icon={<PlusOutlined />} onClick={() => openAddStockModal(r)}>Nhập thêm</Button>
+          </Tooltip>
+          <Button type="text" icon={<EditOutlined />} onClick={() => { setEditingItem(r); form.setFieldsValue(r); setIsModalOpen(true); }} />
           <Popconfirm title="Xóa vĩnh viễn vật tư này?" onConfirm={() => remove(ref(db, `materials/${r.key}`))}>
             <Button type="text" danger icon={<DeleteOutlined />} />
           </Popconfirm>
@@ -690,6 +722,31 @@ const handleSaveMaterial = async (values) => {
               </Form.Item>
             </Col>
           </Row>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={<Title level={4}>NHẬP THÊM KHO</Title>}
+        open={isAddStockOpen}
+        onCancel={() => { setIsAddStockOpen(false); setAddStockItem(null); }}
+        onOk={() => addStockForm.submit()}
+        width={520}
+        okText="Cập nhật tồn kho"
+        cancelText="Hủy bỏ"
+      >
+        <Form form={addStockForm} layout="vertical" onFinish={handleAddStock} style={{ marginTop: 20 }}>
+          <Text strong>{addStockItem ? `${addStockItem.name} - ${addStockItem.code}` : ''}</Text>
+          <Form.Item
+            name="qty"
+            label="Số lượng cần nhập thêm"
+            rules={[{ required: true, type: 'number', min: 1, message: 'Nhập số lượng hợp lệ' }]}
+            style={{ marginTop: 16 }}
+          >
+            <InputNumber style={{ width: '100%' }} size="large" min={1} />
+          </Form.Item>
+          <Form.Item name="note" label="Ghi chú (tuỳ chọn)">
+            <Input.TextArea rows={3} placeholder="Ví dụ: nhập thêm từ nhà cung cấp" />
+          </Form.Item>
         </Form>
       </Modal>
 

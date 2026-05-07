@@ -180,6 +180,12 @@ const App = () => {
       }
     });
   }, [user]);
+  // Reset page về 1 khi filter thay đổi để tránh trang trống
+  useEffect(() => {
+    setPage1(1);
+    setPage2(1);
+    setPage3(1);
+  }, [searchText, dateRange, customerFilter, bgFilter]);
   // Thay thế toàn bộ useState và useEffect của notifications bằng cục này:
   const notifications = useMemo(() => {
     if (orders.length === 0) return realtimeNotis; // Nếu chưa có đơn thì hiện thông báo từ cán bộ
