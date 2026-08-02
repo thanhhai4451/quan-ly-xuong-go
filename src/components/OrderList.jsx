@@ -1,35 +1,30 @@
-import React from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
-  Table,
-  Tag,
-  Progress,
-  Typography,
   Collapse,
-  InputNumber,
+  Progress,
+  Table,
+  Card,
+  Empty,
   Space,
-  Button,
-  Modal,
-  message,
-  Row,
-  Col,
-  Badge,
-  Pagination,
   Image,
+  InputNumber,
+  Button,
+  Tag,
+  Typography,
+  Tooltip,
 } from "antd";
 import {
-  DeleteOutlined,
-  ClockCircleOutlined,
-  CarryOutOutlined,
+  CaretRightOutlined,
+  CalendarOutlined,
   EditOutlined,
-  SendOutlined,
-  CheckCircleOutlined,
-  EyeOutlined,
-  PictureOutlined,
+  DeleteOutlined,
+  RightOutlined,
+  InboxOutlined,
+  CheckSquareOutlined,
+  ExportOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
-import dayjs from "dayjs";
-import { ref, remove, update } from "firebase/database";
-import { db } from "../firebase";
-import { getDrivePreview } from "../utils/drive";
+
 import {
   calculateOrderProgress,
   calculateStepsProgress,
@@ -37,389 +32,408 @@ import {
 
 const { Text } = Typography;
 
+// --- COMPONENT CON TÁCH BIỆT ĐỂ GIỮ FOCUS KHI GÕ SỐ ---
+const QuantityInput = ({ initialValue, onSave, style, min = 0, disabled = false }) => {
+  const [val, setVal] = useState(initialValue ?? 0);
+
+  useEffect(() => {
+    setVal(initialValue ?? 0);
+  }, [initialValue]);
+
+  const handleBlur = () => {
+    const finalVal = val === null || val === undefined ? 0 : Number(val);
+    if (finalVal !== initialValue) {
+      onSave?.(finalVal);
+    }
+  };
+
+  return (
+    <InputNumber
+      min={min}
+      value={val}
+      disabled={disabled}
+      onChange={(newVal) => setVal(newVal)}
+      onBlur={handleBlur}
+      style={{
+        borderRadius: "6px",
+        textAlign: "center",
+        fontWeight: 600,
+        ...style,
+      }}
+    />
+  );
+};
+
+// Bóc tách ID ảnh từ Google Drive
+const getDirectImageUrl = (url) => {
+  if (!url || typeof url !== "string") return "";
+  if (!url.includes("drive.google.com")) return url;
+
+  const match =
+    url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ||
+    url.match(/[?&]id=([a-zA-Z0-9_-]+)/) ||
+    url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+
+  if (match && match[1]) {
+    return `https://drive.google.com/thumbnail?id=${match[1]}&sz=s500`;
+  }
+  return url;
+};
+
 const OrderList = ({
-  data,
-  isDeliveredTab = false,
-  page,
-  setPage,
-  pageSize,
+  data = [],
   tableColumns,
   isAdmin,
   onEditOrder,
+  onDeleteOrder,
+  onUpdateDongGoi,
+  isDeliveredTab,
   onDeliverOrder,
 }) => {
-  const processedData = data.map((order) => {
-    const sortedChiTiet = [...(order.chiTiet || [])].sort((a, b) => {
-      const groupA = a.groupName?.trim() || "ZZZZ";
-      const groupB = b.groupName?.trim() || "ZZZZ";
-      return groupA.localeCompare(groupB);
-    });
-    return { ...order, chiTiet: sortedChiTiet };
-  });
+  // Gom nhóm dữ liệu theo mã đơn / báo giá
+  const groupedData = useMemo(() => {
+    if (!data || data.length === 0) return {};
 
-  const collapseItems = processedData.map((order) => {
-    const currentColumns = tableColumns(order.fbKey, order, order);
-    const progress = calculateOrderProgress(order);
-    const stepsProgress = calculateStepsProgress(order);
-    const isDone = (order.soLuongDongGoi || 0) >= (order.tongSoBo || 1);
-    const isPackingOverdue =
-      order.deadlineDongGoi &&
-      !isDone &&
-      dayjs().isAfter(dayjs(order.deadlineDongGoi), "day");
+    return data.reduce((acc, order) => {
+      const bgCode = order.maDon || order.bgCode || "MÃ KHÁC";
+      if (!acc[bgCode]) {
+        acc[bgCode] = {
+          bgCode: bgCode,
+          tenKhachHang: order.tenKhachHang || order.tenKH || "BLUEZON GLOBAL",
+          ngayGiao: order.ngayGiao || "",
+          orders: [],
+        };
+      }
+      acc[bgCode].orders.push(order);
+      return acc;
+    }, {});
+  }, [data]);
+
+  if (!data || data.length === 0) {
+    return (
+      <Card style={{ borderRadius: 12, marginTop: 16, textAlign: "center", borderColor: "#f0f0f0" }}>
+        <Empty description="Chưa có dữ liệu đơn hàng" style={{ padding: "32px 0" }} />
+      </Card>
+    );
+  }
+
+  // Tier 1: Danh sách các Card Mã Đơn / Báo Giá
+  const masterCollapseItems = Object.values(groupedData).map((group) => {
+    const totalSp = group.orders.length;
+
+    const avgProgress = Math.round(
+      group.orders.reduce((sum, o) => {
+        const cd = calculateStepsProgress(o);
+        const dg = calculateOrderProgress(o);
+        return sum + Math.round((cd + dg) / 2);
+      }, 0) / (totalSp || 1)
+    );
 
     return {
-      key: order.fbKey,
+      key: group.bgCode,
       label: (
-        <Row align="middle" style={{ width: "95%" }}>
-          <Col
-            xs={24}
-            sm={8}
-            style={{ display: "flex", alignItems: "center" }}
-          >
-            <div
-              style={{
-                marginRight: 12,
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              {order.hinhAnh ? (
-                <Image
-                  width={70}
-                  height={70}
-                  src={getDrivePreview(order.hinhAnh)}
-                  fallback="https://placehold.co/45x45?text=MAH"
-                  style={{
-                    borderRadius: 8,
-                    objectFit: "cover",
-                    border: "1px solid #f0f0f0",
-                  }}
-                  preview={{
-                    cover: <EyeOutlined style={{ fontSize: 12 }} />,
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: 45,
-                    height: 45,
-                    borderRadius: 8,
-                    background: "#f5f5f5",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    border: "1px solid #d9d9d9",
-                  }}
-                >
-                  <PictureOutlined
-                    style={{ color: "#bfbfbf", fontSize: 20 }}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div style={{ flex: 1 }}>
-              <Badge
-                status={
-                  order.daGiao
-                    ? "default"
-                    : progress >= 100
-                      ? "success"
-                      : dayjs(order.ngayGiao, "DD/MM/YYYY").isBefore(dayjs())
-                        ? "error"
-                        : "processing"
-                }
-              />
-              <Text
-                strong
-                style={{
-                  fontSize: "15px",
-                  marginLeft: 8,
-                  color: "#001529",
-                  textTransform: "uppercase",
-                }}
-              >
-                {order.tenSP}
+        <div style={{ padding: "4px 0" }}>
+          {/* Header nhóm đơn */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+            <Space size="middle" align="center">
+              <Text style={{ color: "#0958d9", fontWeight: 700, fontSize: "16px" }}>
+                {group.bgCode}
               </Text>
-              {order.daGiao && (
-                <Tag color="default" style={{ marginLeft: 8 }}>
-                  ĐÃ GIAO
-                </Tag>
-              )}
-            </div>
-          </Col>
+              <Tag color="blue" style={{ borderRadius: "10px", fontWeight: 500 }}>
+                {totalSp} sản phẩm
+              </Tag>
+              <Space size={4} style={{ color: "#595959", fontSize: "13px" }}>
+                <UserOutlined style={{ color: "#8c8c8c" }} />
+                <Text type="secondary">Khách:</Text>
+                <Text bold>{group.tenKhachHang}</Text>
+              </Space>
+            </Space>
 
-          <Col xs={16} sm={10} style={{ padding: "0 20px" }}>
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: "4px" }}
-            >
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <span
-                  style={{
-                    fontSize: "10px",
-                    marginRight: "4px",
-                    color: "#8c8c8c",
-                  }}
-                >
-                  Đóng gói:
-                </span>
-                <Progress
-                  percent={progress}
-                  size="small"
-                  status={order.daGiao ? "normal" : "active"}
-                  strokeColor={
-                    order.daGiao
-                      ? "#d9d9d9"
-                      : { "0%": "#108ee9", "100%": "#52c41a" }
-                  }
-                />
-              </div>
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <span
-                  style={{
-                    fontSize: "10px",
-                    marginRight: "4px",
-                    color: "#8c8c8c",
-                  }}
-                >
-                  Công đoạn:
-                </span>
-                <Progress
-                  percent={stepsProgress}
-                  size="small"
-                  status={order.daGiao ? "normal" : "active"}
-                  strokeColor={
-                    order.daGiao
-                      ? "#d9d9d9"
-                      : { "0%": "#fa8c16", "100%": "#faad14" }
-                  }
-                />
-              </div>
-            </div>
-          </Col>
+            {group.ngayGiao && (
+              <Tag icon={<CalendarOutlined />} color="error" style={{ borderRadius: "6px", padding: "2px 8px", fontSize: "12px" }}>
+                Hạn giao: {group.ngayGiao}
+              </Tag>
+            )}
+          </div>
 
-          <Col xs={8} sm={6} style={{ textAlign: "right" }}>
-            <Tag
-              color={
-                order.daGiao
-                  ? "default"
-                  : dayjs(order.ngayGiao, "DD/MM/YYYY").isBefore(dayjs())
-                    ? "red"
-                    : "blue"
-              }
-              icon={<ClockCircleOutlined />}
-            >
-              Giao: {order.ngayGiao}
-            </Tag>
-          </Col>
-        </Row>
-      ),
-      extra: (
-        <Space onClick={(e) => e.stopPropagation()}>
-          {isAdmin && (
-            <>
-              {!order.daGiao && (
-                <Button
-                  type="text"
-                  icon={<EditOutlined />}
-                  onClick={() => onEditOrder(order)}
-                />
-              )}
-              <Button
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() =>
-                  Modal.confirm({
-                    title: "Xoá đơn này?",
-                    content: "Hành động này không thể hoàn tác!",
-                    onOk: () => remove(ref(db, `orders/${order.fbKey}`)),
-                  })
-                }
-              />
-            </>
-          )}
-        </Space>
+          {/* Thanh progress tổng của Mã Đơn */}
+          <div
+            style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: "10px" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Progress
+              percent={avgProgress}
+              strokeColor={{ "0%": "#108ee9", "100%": "#52c41a" }}
+              trailColor="#f5f5f5"
+              strokeWidth={8}
+              style={{ flex: 1, margin: 0 }}
+            />
+          </div>
+        </div>
       ),
       children: (
-        <>
-          <Table
-            columns={currentColumns}
-            dataSource={order.chiTiet}
-            pagination={false}
-            bordered
-            scroll={{ x: 500 }}
-            size="middle"
-            rowKey={(record) => record.key || record.name}
-          />
-          <div
-            style={{
-              marginTop: 15,
-              padding: "15px",
-              background: order.daGiao
-                ? "#f5f5f5"
-                : isPackingOverdue
-                  ? "#fff1f0"
-                  : "#f6ffed",
-              borderRadius: "8px",
-              border: `1px solid ${order.daGiao ? "#d9d9d9" : isPackingOverdue ? "#ffa39e" : "#b7eb8f"}`,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "10px",
-            }}
-          >
-            <Space size="large">
-              <Text strong>
-                <CarryOutOutlined /> ĐÓNG GÓI XONG (BỘ):
-              </Text>
-              <div style={{ textAlign: "center" }}>
-                <InputNumber
-                  min={0}
-                  size="large"
-                  style={{ width: 120 }}
-                  value={order.soLuongDongGoi || 0}
-                  onChange={(val) => {}}
-                  onBlur={(e) => {
-                    const newVal = Number(e.target.value) || 0;
-                    if (newVal !== order.soLuongDongGoi) {
-                      update(ref(db, `orders/${order.fbKey}`), {
-                        soLuongDongGoi: newVal,
-                      });
-                      message.success("Đã cập nhật số lượng đóng gói!");
-                    }
-                  }}
-                />
-                {order.deadlineDongGoi && (
-                  <div
-                    style={{
-                      fontSize: "11px",
-                      color: isPackingOverdue ? "red" : "#8c8c8c",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    Hạn xong: {dayjs(order.deadlineDongGoi).format("DD/MM")}
-                  </div>
-                )}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 16,
-                }}
-              >
-                <Text type="secondary">
-                  / Tổng bộ cần:{" "}
-                  <b style={{ color: "#f5222d", fontSize: "16px" }}>
-                    {order.tongSoBo}
-                  </b>
-                </Text>
-                <div style={{ textAlign: "center" }}>
-                  <div
-                    style={{
-                      marginBottom: 4,
-                      fontSize: "12px",
-                      color: "#595959",
-                    }}
-                  >
-                    ĐÃ XUẤT
-                  </div>
-                  <InputNumber
-                    min={0}
-                    size="large"
-                    style={{ width: 120 }}
-                    value={order.soLuongDaXuat || 0}
-                    onBlur={(e) => {
-                      const newVal = Number(e.target.value) || 0;
-                      if (newVal !== order.soLuongDaXuat) {
-                        update(ref(db, `orders/${order.fbKey}`), {
-                          soLuongDaXuat: newVal,
-                        });
-                        message.success("Đã cập nhật số lượng đã xuất!");
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-            </Space>
+        <div style={{ padding: "4px 0" }}>
+          <Collapse
+            bordered={false}
+            expandIconPosition="end"
+            expandIcon={({ isActive }) => (
+              <RightOutlined rotate={isActive ? 90 : 0} style={{ color: "#bfbfbf", fontSize: "12px" }} />
+            )}
+            items={group.orders.map((order, index) => {
+              const dongGoiProg = calculateOrderProgress(order);
+              const congDoanProg = calculateStepsProgress(order);
+              const finalImgUrl = getDirectImageUrl(order.hinhAnh);
 
-            <Space>
-              <div style={{ width: 150 }}>
-                <Progress
-                  percent={progress}
-                  status={order.daGiao ? "normal" : "active"}
-                  strokeColor={order.daGiao ? "#8c8c8c" : "#52c41a"}
-                />
-              </div>
-              {progress >= 100 && !order.daGiao && (
-                <Button
-                  type="primary"
-                  size="large"
-                  icon={<SendOutlined />}
-                  style={{ background: "#52c41a", borderColor: "#52c41a" }}
-                  onClick={() => onDeliverOrder(order.fbKey)}
-                >
-                  HOÀN TẤT & GIAO HÀNG
-                </Button>
-              )}
-              {order.daGiao && (
-                <Text type="secondary">
-                  <CheckCircleOutlined /> Đã giao lúc: {order.ngayThucTeGiao}
-                </Text>
-              )}
-            </Space>
-          </div>
-        </>
+              const itemKey = String(order.fbKey || order.id || order.key || `order-${index}`);
+
+              return {
+                key: itemKey,
+                style: {
+                  marginBottom: 12,
+                  background: "#ffffff",
+                  borderRadius: "10px",
+                  border: "1px solid #e8e8e8",
+                  boxShadow: "0 2px 6px rgba(0,0,0,0.02)",
+                  overflow: "hidden",
+                },
+                label: (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "16px",
+                      width: "100%",
+                      paddingRight: "8px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    {/* Hình ảnh + Tên sản phẩm */}
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: "240px", flex: 1 }}>
+                      {finalImgUrl ? (
+                        <Image
+                          src={finalImgUrl}
+                          width={48}
+                          height={48}
+                          style={{
+                            borderRadius: "8px",
+                            objectFit: "cover",
+                            border: "1px solid #f0f0f0",
+                          }}
+                          preview={false}
+                          fallback="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            width: 48,
+                            height: 48,
+                            borderRadius: 8,
+                            background: "#f5f5f5",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            border: "1px solid #f0f0f0",
+                          }}
+                        >
+                          <InboxOutlined style={{ fontSize: 20, color: "#bfbfbf" }} />
+                        </div>
+                      )}
+
+                      <div>
+                        <Text bold style={{ fontSize: "14px", textTransform: "uppercase", color: "#1f1f1f", display: "block" }}>
+                          {order.tenSP}
+                        </Text>
+                        {order.ngayGiao && (
+                          <Text type="danger" style={{ fontSize: "11px" }}>
+                            <CalendarOutlined /> {order.ngayGiao}
+                          </Text>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Tiến độ Công Đoạn & Đóng Gói */}
+                    <div style={{ width: "200px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <Text type="secondary" style={{ fontSize: "11px", width: "55px", textAlign: "right" }}>
+                          Công đoạn:
+                        </Text>
+                        <Progress
+                          percent={congDoanProg}
+                          showInfo={false}
+                          strokeColor="#1890ff"
+                          trailColor="#f5f5f5"
+                          strokeWidth={6}
+                          style={{ flex: 1, margin: 0 }}
+                        />
+                        <Text style={{ fontSize: "11px", width: "32px", fontWeight: 600 }}>{congDoanProg}%</Text>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <Text type="secondary" style={{ fontSize: "11px", width: "55px", textAlign: "right" }}>
+                          Đóng gói:
+                        </Text>
+                        <Progress
+                          percent={dongGoiProg}
+                          showInfo={false}
+                          strokeColor="#fa8c16"
+                          trailColor="#f5f5f5"
+                          strokeWidth={6}
+                          style={{ flex: 1, margin: 0 }}
+                        />
+                        <Text style={{ fontSize: "11px", width: "32px", fontWeight: 600 }}>{dongGoiProg}%</Text>
+                      </div>
+                    </div>
+
+                    {/* Nút thao tác ADMIN */}
+                    <Space size="small" onClick={(e) => e.stopPropagation()}>
+                      {isAdmin && (
+                        <>
+                          <Tooltip title="Chỉnh sửa đơn">
+                            <Button
+                              type="text"
+                              size="small"
+                              icon={<EditOutlined style={{ color: "#595959" }} />}
+                              onClick={() => onEditOrder?.(order)}
+                            />
+                          </Tooltip>
+                          <Tooltip title="Xóa đơn">
+                            <Button
+                              type="text"
+                              size="small"
+                              danger
+                              icon={<DeleteOutlined />}
+                              onClick={() => onDeleteOrder?.(order)}
+                            />
+                          </Tooltip>
+                          {!isDeliveredTab && dongGoiProg >= 100 && (
+                            <Button
+                              type="primary"
+                              size="small"
+                              style={{ background: "#52c41a", borderColor: "#52c41a", fontWeight: 600 }}
+                              icon={<CheckSquareOutlined />}
+                              onClick={() => onDeliverOrder?.(order.fbKey)}
+                            >
+                              GIAO HÀNG
+                            </Button>
+                          )}
+                        </>
+                      )}
+                    </Space>
+                  </div>
+                ),
+                children: (
+                  <div style={{ padding: "12px", background: "#fafafa" }}>
+                    {/* Bảng chi tiết sản phẩm */}
+                    <Table
+                      columns={
+                        typeof tableColumns === "function"
+                          ? tableColumns(itemKey, order, order)
+                          : tableColumns
+                      }
+                      dataSource={order.chiTiet || []}
+                      pagination={false}
+                      size="small"
+                      bordered
+                      scroll={{ x: "max-content" }}
+                      style={{ background: "#fff", borderRadius: "8px", overflow: "hidden", marginBottom: "12px" }}
+                    />
+
+                    {/* Toolbar Nhập / Kiểm tra Tiến Độ Đóng Gói */}
+                    <div
+                      style={{
+                        background: "#fff",
+                        border: "1px solid #e8e8e8",
+                        borderRadius: "8px",
+                        padding: "10px 16px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: "12px",
+                      }}
+                    >
+                      <Space size="large" wrap>
+                        <Space align="center">
+                          <CheckSquareOutlined style={{ color: "#fa8c16", fontSize: "16px" }} />
+                          <Text bold style={{ fontSize: "13px" }}>
+                            ĐÓNG GÓI XONG:
+                          </Text>
+                          <QuantityInput
+                            initialValue={order.soLuongDongGoi}
+                            onSave={(val) =>
+                              onUpdateDongGoi?.(order, "soLuongDongGoi", val)
+                            }
+                            style={{ width: "80px" }}
+                          />
+                          <Text type="secondary" style={{ fontSize: "13px" }}>
+                            / Tổng bộ cần: <Text type="danger" bold>{order.tongSoBo || order.tongBoCan || 0}</Text>
+                          </Text>
+                        </Space>
+
+                        <Space align="center">
+                          <ExportOutlined style={{ color: "#1890ff", fontSize: "15px" }} />
+                          <Text bold style={{ fontSize: "13px", color: "#595959" }}>
+                            ĐÃ XUẤT:
+                          </Text>
+                          <QuantityInput
+                            initialValue={order.soLuongDaXuat || 0}
+                            disabled
+                            style={{ width: "80px", background: "#f5f5f5" }}
+                          />
+                        </Space>
+
+                        {order.deadlineDongGoi && (
+                          <Tag color="volcano" style={{ borderRadius: "4px" }}>
+                            Hạn xong ĐG: {order.deadlineDongGoi}
+                          </Tag>
+                        )}
+                      </Space>
+
+                      {/* Tiến độ hoàn thành Đóng gói dạng số % */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: "140px" }}>
+                        <Progress
+                          percent={dongGoiProg}
+                          showInfo={false}
+                          strokeColor={dongGoiProg === 100 ? "#52c41a" : "#fa8c16"}
+                          strokeWidth={8}
+                          style={{ flex: 1, margin: 0 }}
+                        />
+                        <Text bold style={{ fontSize: "12px", color: dongGoiProg === 100 ? "#52c41a" : "#fa8c16" }}>
+                          {dongGoiProg}%
+                        </Text>
+                      </div>
+                    </div>
+                  </div>
+                ),
+              };
+            })}
+          />
+        </div>
       ),
-      style: {
-        background: "#fdfdfd",
-        marginBottom: 12,
-        borderRadius: 10,
-        border: "1px solid #e8e8e8",
-        overflow: "hidden",
-      },
     };
   });
 
-  const startIndex = (page - 1) * pageSize;
-  const paginatedItems = collapseItems.slice(
-    startIndex,
-    startIndex + pageSize,
-  );
-
   return (
-    <>
+    <div style={{ marginTop: "16px" }}>
       <Collapse
-        accordion
-        ghost
-        expandIconPlacement="end"
-        items={paginatedItems}
+        bordered={false}
+        expandIcon={({ isActive }) => (
+          <CaretRightOutlined rotate={isActive ? 90 : 0} style={{ color: "#0958d9" }} />
+        )}
+        items={masterCollapseItems.map((item) => ({
+          ...item,
+          style: {
+            background: "#ffffff",
+            borderRadius: "12px",
+            marginBottom: "12px",
+            border: "1px solid #e8e8e8",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+            overflow: "hidden",
+          },
+        }))}
       />
-
-      {collapseItems.length > pageSize && (
-        <div
-          style={{
-            textAlign: "center",
-            marginTop: "20px",
-            paddingBottom: "30px",
-          }}
-        >
-          <Pagination
-            current={page}
-            pageSize={pageSize}
-            total={collapseItems.length}
-            showSizeChanger={false}
-            onChange={(p) => {
-              setPage(p);
-              window.scrollTo({ top: 0, behavior: "smooth" });
-            }}
-          />
-        </div>
-      )}
-    </>
+    </div>
   );
 };
 

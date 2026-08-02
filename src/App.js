@@ -6,6 +6,7 @@ import {
   SwapOutlined,
   InboxOutlined,
   DatabaseOutlined,
+  DashboardOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 
@@ -18,8 +19,8 @@ import {
 } from "firebase/auth";
 import ProductionTransfer from "./ProductionTransfer";
 import InventoryManagement from "./InventoryManagement";
+import DashboardTab from "./components/DashboardTab";
 import ExtraStock from "./ExtraStock";
-import StatisticsCards from "./components/StatisticsCards";
 import LoginScreen from "./components/LoginScreen";
 import AppHeader from "./components/AppHeader";
 import ProductionManagementTab from "./components/ProductionManagementTab";
@@ -28,11 +29,7 @@ import OrderFormModal from "./components/OrderFormModal";
 import { useOrderTableColumns } from "./components/useOrderTableColumns";
 import { calculateOrderProgress } from "./utils/progress";
 
-
-
 const App = () => {
-
-  
   const [page1, setPage1] = useState(1);
   const [page2, setPage2] = useState(1);
   const [page3, setPage3] = useState(1);
@@ -346,7 +343,60 @@ const App = () => {
     },
     [orders, user],
   ); // Các biến phụ thuộc của hàm này
+const handleUpdateDongGoi = (order, field, value) => {
+  const val = Number(value) || 0;
+  const tongBo = Number(order.tongSoBo || 0);
 
+  const updates = {
+    soLuongDongGoi: val,
+  };
+
+  // Nếu đơn đã giao nhưng chỉnh số lượng xuống thấp hơn tổng bộ
+  // => trả đơn về trạng thái Đang sản xuất
+  if (order.daGiao && val < tongBo) {
+    updates.daGiao = false;
+    updates.ngayThucTeGiao = null;
+  }
+
+  update(ref(db, `orders/${order.fbKey}`), updates)
+    .then(() => {
+      if (order.daGiao && val < tongBo) {
+        message.success("Đơn đã được chuyển lại ĐANG SẢN XUẤT");
+      } else if (!order.daGiao && val >= tongBo) {
+        message.success("Đơn hàng đã hoàn thành và chuyển sang CHỜ GIAO");
+      } else {
+        message.success("Đã cập nhật đóng gói");
+      }
+    })
+    .catch(() => {
+      message.error("Lỗi cập nhật đóng gói");
+    });
+};
+
+    const handleDeleteOrder = (order) => {
+  Modal.confirm({
+    title: "Xóa đơn hàng?",
+    content: `Bạn có chắc muốn xóa đơn "${order.tenSP}" không?`,
+    okText: "Xóa",
+    okType: "danger",
+    cancelText: "Hủy",
+    onOk: () => {
+      remove(ref(db, `orders/${order.fbKey}`))
+        .then(() => {
+          message.success("Đã xóa đơn hàng");
+        })
+        .catch((err) => {
+          message.error("Lỗi khi xóa: " + err.message);
+        });
+    },
+  });
+};
+
+  const handleUpdateDaXuat = (order, field, value) => {
+  update(ref(db, `orders/${order.fbKey}`), {
+    soLuongDaXuat: Number(value) || 0,
+  });
+};
   const handleLogout = () =>
     signOut(auth).then(() => message.info("Đã đăng xuất!"));
 
@@ -651,6 +701,7 @@ const App = () => {
       return matchSearch && matchDate && matchCustomer && matchBG;
     });
 
+
     return {
       dangLam: filtered
         .filter((o) => !o.daGiao && calculateOrderProgress(o) < 100)
@@ -690,11 +741,18 @@ const App = () => {
         onLogout={handleLogout}
       />
 
-      <StatisticsCards stats={stats} />
-
       <Tabs
         type="card"
         items={[
+          {
+            key: "dashboard",
+            label: (
+              <b>
+                <DashboardOutlined /> BÁO CÁO TỔNG QUAN
+              </b>
+            ),
+            children: <DashboardTab orders={orders} khoDu={khoDu} />,
+          },
           {
             key: "1",
             label: (
@@ -725,6 +783,9 @@ const App = () => {
                 tableColumns={tableColumns}
                 onEditOrder={openEditModal}
                 onDeliverOrder={handleDeliverOrder}
+                onUpdateDongGoi={handleUpdateDongGoi}
+                onUpdateDaXuat={handleUpdateDaXuat}
+                onDeleteOrder={handleDeleteOrder}
               />
             ),
           },

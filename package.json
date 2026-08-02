@@ -15,11 +15,12 @@
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "jspdf-font": "^1.0.7",
+    "lucide-react": "^1.27.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-scripts": "5.0.1",
     "react-to-print": "^3.3.0",
-    "recharts": "^3.10.0",
+    "recharts": "^3.10.1",
     "web-vitals": "^2.1.4",
     "xlsx": "^0.18.5"
   },

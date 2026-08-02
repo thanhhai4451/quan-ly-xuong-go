@@ -35,6 +35,8 @@ const ProductionManagementTab = ({
   tableColumns,
   onEditOrder,
   onDeliverOrder,
+  onUpdateDongGoi,
+  onDeleteOrder
 }) => {
   return (
     <div
@@ -103,6 +105,8 @@ const ProductionManagementTab = ({
                 isAdmin={isAdmin}
                 onEditOrder={onEditOrder}
                 onDeliverOrder={onDeliverOrder}
+                  onUpdateDongGoi={onUpdateDongGoi}
+                  onDeleteOrder={onDeleteOrder}
               />
             ),
           },
@@ -128,6 +132,8 @@ const ProductionManagementTab = ({
                 isAdmin={isAdmin}
                 onEditOrder={onEditOrder}
                 onDeliverOrder={onDeliverOrder}
+                  onUpdateDongGoi={onUpdateDongGoi}
+                  onDeleteOrder={onDeleteOrder}
               />
             ),
           },
@@ -152,7 +158,9 @@ const ProductionManagementTab = ({
                 tableColumns={tableColumns}
                 isAdmin={isAdmin}
                 onEditOrder={onEditOrder}
-                onDeliverOrder={onDeliverOrder}
+                onDeliverOrder={onDeliverOrder} 
+                 onUpdateDongGoi={onUpdateDongGoi}
+                 onDeleteOrder={onDeleteOrder}
               />
             ),
           },

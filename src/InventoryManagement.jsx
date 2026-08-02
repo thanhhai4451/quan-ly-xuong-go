@@ -501,8 +501,7 @@ const handleSaveMaterial = async (values) => {
         <Space size="large">
           <Avatar shape="square" icon={<LayoutOutlined />} style={{ backgroundColor: '#1677ff' }} size="large" />
           <div>
-            <Title level={4} style={{ margin: 0 }}>HỆ THỐNG QUẢN LÝ KHO ERP PRO</Title>
-            <Text type="secondary" style={{ fontSize: '12px' }}>Dành Cho Doanh Nghiệp & Xưởng Sản Xuất</Text>
+            <Title level={4} style={{ margin: 0 }}>HỆ THỐNG QUẢN LÝ KHO ERP </Title>
           </div>
         </Space>
 

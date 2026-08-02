@@ -1,7 +1,12 @@
 export const calculateOrderProgress = (order) => {
-  if (!order || !order.tongSoBo) return 0;
+  if (!order) return 0;
 
-  const tongBo = Number(order.tongSoBo);
+  // Lấy tổng bộ cần từ tất cả các trường có thể có
+  const tongBo = Number(
+    order.tongSoBo || order.tongBoCan || order.tongSoLuong || order.soLuong || 0
+  );
+  if (tongBo === 0) return 0;
+
   const daDongGoi = Number(order.soLuongDongGoi) || 0;
 
   return Math.min(100, Math.round((daDongGoi / tongBo) * 100));
