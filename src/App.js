@@ -638,7 +638,7 @@ const handleUpdateDongGoi = (order, field, value) => {
     form.resetFields();
     setIsModalOpen(true);
   };
-  const stats = useMemo(() => {
+const stats = useMemo(() => {
     const total = orders.filter((o) => !o.daGiao).length;
     const completed = orders.filter(
       (o) => !o.daGiao && (o.soLuongDongGoi || 0) >= (o.tongSoBo || 1),
@@ -654,6 +654,8 @@ const handleUpdateDongGoi = (order, field, value) => {
     }).length;
     return { total, completed, pending, overdue };
   }, [orders]);
+
+  console.log(stats); // <--- Thêm dòng này vào là xong!
 
   const customerOptions = useMemo(() => {
     const s = new Set();
