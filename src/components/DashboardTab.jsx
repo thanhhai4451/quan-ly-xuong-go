@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Row, Col, Card, Progress, Tag, Typography, Input, Select, Button, Space, 
-  Drawer, DatePicker // ⚡ Đã thêm DatePicker
+  Drawer, DatePicker 
 } from 'antd';
 import { 
   SyncOutlined, WarningOutlined, InboxOutlined, RiseOutlined, 
   FallOutlined, CalendarOutlined,
-  FullscreenOutlined, FullscreenExitOutlined, FileExcelOutlined, PrinterOutlined
+  FullscreenOutlined, FullscreenExitOutlined, FileExcelOutlined, PrinterOutlined,
+  UserOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
@@ -73,7 +74,7 @@ const getItemProgress = (item) => {
 const DashboardTab = ({ orders = [], khoDu = {} }) => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
-  const [dateRange, setDateRange] = useState(null); // ⚡ State lưu khoảng ngày lọc
+  const [dateRange, setDateRange] = useState(null);
   const [refreshInterval, setRefreshInterval] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedOrderGroup, setSelectedOrderGroup] = useState(null);
@@ -207,7 +208,7 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
     };
   }, [filteredGroupedOrders, filteredRawOrders, khoDu]);
 
-  // Dữ liệu cho các Biểu đồ (Đã tích hợp Lọc từ ngày -> đến ngày)
+  // Dữ liệu cho các Biểu đồ
   const chartData = useMemo(() => {
     let dailyOutput = Object.keys(metrics.dailyMap || {})
       .map(dateStr => ({
@@ -220,7 +221,6 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
         return dateA.valueOf() - dateB.valueOf();
       });
 
-    // ⚡ LỌC MẢNG NGÀY THEO RANGE PICKER NẾU CÓ CHỌN
     if (dateRange && dateRange[0] && dateRange[1]) {
       const startDate = dateRange[0].startOf('day');
       const endDate = dateRange[1].endOf('day');
@@ -233,10 +233,29 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
       });
     }
 
-    const topTeams = Object.keys(metrics.teamPerformance || {}).map(t => ({
-      to: t,
-      sanLuong: metrics.teamPerformance[t].sanLuong
-    })).slice(0, 5);
+    const PRODUCTION_ORDER = ['PHOI', 'DINHHINH', 'LAPRAP', 'NHAM', 'SON', 'DONGGOI'];
+    const normalizeKey = (str = '') => {
+      return str
+        .toUpperCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '');
+    };
+
+    const topTeams = Object.keys(metrics.teamPerformance || {})
+      .map(t => ({
+        to: t,
+        sanLuong: metrics.teamPerformance[t].sanLuong
+      }))
+      .sort((a, b) => {
+        const keyA = normalizeKey(a.to);
+        const keyB = normalizeKey(b.to);
+
+        const indexA = PRODUCTION_ORDER.findIndex(order => keyA.includes(order));
+        const indexB = PRODUCTION_ORDER.findIndex(order => keyB.includes(order));
+
+        return (indexA === -1 ? 99 : indexA) - (indexB === -1 ? 99 : indexB);
+      });
 
     const topCustomers = Object.keys(metrics.customerMap || {}).map(c => ({
       khachHang: c,
@@ -267,27 +286,29 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
         { name: 'Trễ Hạn', value: metrics.overdue },
       ],
       teamRadar: [
-        { subject: 'Mộc', A: 88 },
+        { subject: 'Phôi', A: 88 },
+        { subject: 'Định hình', A: 90 },
+        { subject: 'Lắp ráp', A: 85 },
+        { subject: 'Nhám', A: 80 },
         { subject: 'Sơn', A: 92 },
-        { subject: 'Lắp Ráp', A: 85 },
-        { subject: 'Đóng Gói', A: 95 },
-        { subject: 'Kho', A: 90 },
+        { subject: 'Đóng gói', A: 95 },
       ]
     };
-  }, [metrics, dateRange]); // ⚡ Thêm dateRange vào Dependency Array
+  }, [metrics, dateRange]);
 
   const dangLamList = filteredGroupedOrders.filter(o => !o.daGiao && o.percent < 100);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '4px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '4px' }}>
       
       {/* Control Bar */}
-      <Card bordered={false} bodyStyle={{ padding: '12px 16px' }} style={{ borderRadius: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          <Space wrap>
+      <Card bordered={false} bodyStyle={{ padding: '16px 20px' }} style={{ borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+          <Space wrap size="middle">
             <Input.Search
               placeholder="Tìm mã đơn, tên khách..."
-              style={{ width: 200 }}
+              style={{ width: 220 }}
+              size="large"
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
               allowClear
@@ -295,7 +316,8 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
             <Select
               value={statusFilter}
               onChange={val => setStatusFilter(val)}
-              style={{ width: 160 }}
+              style={{ width: 180 }}
+              size="large"
               options={[
                 { value: 'ALL', label: 'Tất cả đơn hàng' },
                 { value: 'PRODUCING', label: 'Đang sản xuất' },
@@ -305,19 +327,20 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
               ]}
             />
 
-            {/* ⚡ BỘ CHỌN KHOẢNG NGÀY CHO BIỂU ĐỒ */}
             <DatePicker.RangePicker 
               format="DD/MM/YYYY"
               placeholder={['Từ ngày', 'Đến ngày']}
               onChange={(dates) => setDateRange(dates)}
-              style={{ width: 250 }}
+              style={{ width: 260 }}
+              size="large"
               allowClear
             />
 
             <Select
               value={refreshInterval}
               onChange={val => setRefreshInterval(val)}
-              style={{ width: 130 }}
+              style={{ width: 150 }}
+              size="large"
               options={[
                 { value: 0, label: 'Tắt làm mới' },
                 { value: 30, label: 'Làm mới 30s' },
@@ -326,11 +349,16 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
             />
           </Space>
 
-          <Space wrap>
-            <Button icon={<FileExcelOutlined />} onClick={exportExcel}>Xuất Excel</Button>
-            <Button icon={<PrinterOutlined />} onClick={() => window.print()}>In Báo Cáo</Button>
+          <Space wrap size="middle">
+            <Button size="large" icon={<FileExcelOutlined style={{ fontSize: '16px' }} />} onClick={exportExcel} style={{ fontWeight: 500 }}>
+              Xuất Excel
+            </Button>
+            <Button size="large" icon={<PrinterOutlined style={{ fontSize: '16px' }} />} onClick={() => window.print()} style={{ fontWeight: 500 }}>
+              In Báo Cáo
+            </Button>
             <Button 
-              icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />} 
+              size="large"
+              icon={isFullscreen ? <FullscreenExitOutlined style={{ fontSize: '18px' }} /> : <FullscreenOutlined style={{ fontSize: '18px' }} />} 
               onClick={toggleFullscreen} 
             />
           </Space>
@@ -338,89 +366,103 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
       </Card>
 
       {/* KPI Cards Grid */}
-      <Row gutter={[12, 12]}>
+      <Row gutter={[16, 16]}>
+        {/* Sản lượng hôm nay */}
         <Col xs={24} sm={12} md={8} lg={4}>
-          <Card bordered={false} bodyStyle={{ padding: '14px' }} style={{ borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
-            <Text type="secondary" style={{ fontSize: '12px' }}>Sản lượng hôm nay</Text>
-            <Title level={3} style={{ margin: '4px 0 0 0', fontWeight: 700, color: '#1677ff' }}>
+          <Card bordered={false} bodyStyle={{ padding: '18px 16px' }} style={{ borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
+            <Text type="secondary" style={{ fontSize: '14px', fontWeight: 500 }}>Sản lượng hôm nay</Text>
+            <div style={{ fontSize: '30px', fontWeight: 800, color: '#1677ff', margin: '6px 0 2px 0', lineHeight: 1.2 }}>
               {metrics.outputToday.toLocaleString()}
-            </Title>
-            <div style={{ marginTop: '6px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Tag color={metrics.percentChange >= 0 ? "success" : "error"} style={{ margin: 0 }}>
+            </div>
+            <div style={{ marginTop: '8px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Tag color={metrics.percentChange >= 0 ? "success" : "error"} style={{ margin: 0, padding: '2px 8px', fontSize: '12px', fontWeight: 600 }}>
                 {metrics.percentChange >= 0 ? <RiseOutlined /> : <FallOutlined />} {metrics.percentChange}%
               </Tag>
-              <Text type="secondary" style={{ fontSize: '11px' }}>vs hôm qua</Text>
+              <Text type="secondary" style={{ fontSize: '12px' }}>vs hôm qua</Text>
             </div>
           </Card>
         </Col>
 
+        {/* Sản lượng hôm qua */}
         <Col xs={24} sm={12} md={8} lg={4}>
-          <Card bordered={false} bodyStyle={{ padding: '14px' }} style={{ borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
-            <Text type="secondary" style={{ fontSize: '12px' }}>Sản lượng hôm qua</Text>
-            <Title level={3} style={{ margin: '4px 0 0 0', fontWeight: 700, color: '#595959' }}>
+          <Card bordered={false} bodyStyle={{ padding: '18px 16px' }} style={{ borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
+            <Text type="secondary" style={{ fontSize: '14px', fontWeight: 500 }}>Sản lượng hôm qua</Text>
+            <div style={{ fontSize: '30px', fontWeight: 800, color: '#434343', margin: '6px 0 2px 0', lineHeight: 1.2 }}>
               {metrics.outputYesterday.toLocaleString()}
-            </Title>
-            <Text type="secondary" style={{ fontSize: '11px', marginTop: '8px', display: 'block' }}>Ghi nhận từ các tổ</Text>
+            </div>
+            <Text type="secondary" style={{ fontSize: '12px', marginTop: '8px', display: 'block' }}>Ghi nhận từ các tổ</Text>
           </Card>
         </Col>
 
+        {/* Đang sản xuất */}
         <Col xs={24} sm={12} md={8} lg={4}>
-          <Card bordered={false} bodyStyle={{ padding: '14px' }} style={{ borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <Card bordered={false} bodyStyle={{ padding: '18px 16px' }} style={{ borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <Text type="secondary" style={{ fontSize: '12px' }}>Đang sản xuất</Text>
-                <Title level={3} style={{ margin: '4px 0 0 0', fontWeight: 700, color: '#faad14' }}>
+                <Text type="secondary" style={{ fontSize: '14px', fontWeight: 500 }}>Đang sản xuất</Text>
+                <div style={{ fontSize: '30px', fontWeight: 800, color: '#faad14', margin: '6px 0 2px 0', lineHeight: 1.2 }}>
                   {metrics.inProduction}
-                </Title>
+                </div>
               </div>
-              <SyncOutlined spin style={{ fontSize: '18px', color: '#faad14', background: '#fffbe6', padding: '8px', borderRadius: '50%', height: 'fit-content' }} />
+              <div style={{ background: '#fffbe6', padding: '10px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <SyncOutlined spin style={{ fontSize: '22px', color: '#faad14' }} />
+              </div>
             </div>
-            <Text type="secondary" style={{ fontSize: '11px', marginTop: '8px', display: 'block' }}>TỔNG ĐƠN: {metrics.totalOrders}</Text>
+            <Text type="secondary" style={{ fontSize: '12px', marginTop: '8px', display: 'block', fontWeight: 500 }}>TỔNG ĐƠN: {metrics.totalOrders}</Text>
           </Card>
         </Col>
 
+        {/* Cảnh báo trễ hạn */}
         <Col xs={24} sm={12} md={8} lg={4}>
-          <Card bordered={false} bodyStyle={{ padding: '14px' }} style={{ borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <Card bordered={false} bodyStyle={{ padding: '18px 16px' }} style={{ borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <Text type="secondary" style={{ fontSize: '12px' }}>Cảnh báo trễ hạn</Text>
-                <Title level={3} style={{ margin: '4px 0 0 0', fontWeight: 700, color: '#ff4d4f' }}>
+                <Text type="secondary" style={{ fontSize: '14px', fontWeight: 500 }}>Cảnh báo trễ hạn</Text>
+                <div style={{ fontSize: '30px', fontWeight: 800, color: '#ff4d4f', margin: '6px 0 2px 0', lineHeight: 1.2 }}>
                   {metrics.overdue}
-                </Title>
+                </div>
               </div>
-              <WarningOutlined style={{ fontSize: '18px', color: '#ff4d4f', background: '#fff1f0', padding: '8px', borderRadius: '50%', height: 'fit-content' }} />
+              <div style={{ background: '#fff1f0', padding: '10px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <WarningOutlined style={{ fontSize: '22px', color: '#ff4d4f' }} />
+              </div>
             </div>
-            <Text type="danger" style={{ fontSize: '11px', marginTop: '8px', display: 'block' }}>Tỷ lệ SLA đúng hạn: {metrics.onTimeRate}%</Text>
+            <Text type="danger" style={{ fontSize: '12px', marginTop: '8px', display: 'block', fontWeight: 600 }}>Tỷ lệ đúng hạn: {metrics.onTimeRate}%</Text>
           </Card>
         </Col>
 
+        {/* Mặt hàng dư kho */}
         <Col xs={24} sm={12} md={8} lg={4}>
-          <Card bordered={false} bodyStyle={{ padding: '14px' }} style={{ borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <Card bordered={false} bodyStyle={{ padding: '18px 16px' }} style={{ borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <Text type="secondary" style={{ fontSize: '12px' }}>Mặt hàng dư kho</Text>
-                <Title level={3} style={{ margin: '4px 0 0 0', fontWeight: 700, color: '#52c41a' }}>
+                <Text type="secondary" style={{ fontSize: '14px', fontWeight: 500 }}>Mặt hàng dư kho</Text>
+                <div style={{ fontSize: '30px', fontWeight: 800, color: '#52c41a', margin: '6px 0 2px 0', lineHeight: 1.2 }}>
                   {metrics.totalStockCount}
-                </Title>
+                </div>
               </div>
-              <InboxOutlined style={{ fontSize: '18px', color: '#52c41a', background: '#f6ffed', padding: '8px', borderRadius: '50%', height: 'fit-content' }} />
+              <div style={{ background: '#f6ffed', padding: '10px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <InboxOutlined style={{ fontSize: '22px', color: '#52c41a' }} />
+              </div>
             </div>
-            <Text type="secondary" style={{ fontSize: '11px', marginTop: '8px', display: 'block' }}>Mặt hàng sẵn có</Text>
+            <Text type="secondary" style={{ fontSize: '12px', marginTop: '8px', display: 'block' }}>Mặt hàng sẵn có</Text>
           </Card>
         </Col>
 
+        {/* Dự báo ngày mai */}
         <Col xs={24} sm={12} md={8} lg={4}>
-          <Card bordered={false} bodyStyle={{ padding: '14px' }} style={{ borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <Card bordered={false} bodyStyle={{ padding: '18px 16px' }} style={{ borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <Text type="secondary" style={{ fontSize: '12px' }}>Dự báo ngày mai</Text>
-                <Title level={3} style={{ margin: '4px 0 0 0', fontWeight: 700, color: '#722ed1' }}>
+                <Text type="secondary" style={{ fontSize: '14px', fontWeight: 500 }}>Dự báo ngày mai</Text>
+                <div style={{ fontSize: '30px', fontWeight: 800, color: '#722ed1', margin: '6px 0 2px 0', lineHeight: 1.2 }}>
                   {metrics.forecastedTomorrow.toLocaleString()}
-                </Title>
+                </div>
               </div>
-              <RiseOutlined style={{ fontSize: '18px', color: '#722ed1', background: '#f9f0ff', padding: '8px', borderRadius: '50%', height: 'fit-content' }} />
+              <div style={{ background: '#f9f0ff', padding: '10px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <RiseOutlined style={{ fontSize: '22px', color: '#722ed1' }} />
+              </div>
             </div>
-            <Text type="secondary" style={{ fontSize: '11px', marginTop: '8px', display: 'block' }}>Ước tính thuật toán AI</Text>
+            <Text type="secondary" style={{ fontSize: '12px', marginTop: '8px', display: 'block' }}>Thuật toán AI ước tính</Text>
           </Card>
         </Col>
       </Row>
@@ -430,7 +472,7 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
 
       {/* Grid Đơn Hàng Đang Sản Xuất */}
       <Card 
-        title={<span style={{ fontWeight: 600 }}>⚡ Tiến Độ Đơn Hàng Đang Sản Xuất</span>} 
+        title={<span style={{ fontSize: '17px', fontWeight: 700 }}>⚡ Tiến Độ Đơn Hàng Đang Sản Xuất</span>} 
         bordered={false} 
         style={{ borderRadius: '12px', boxShadow: '0 2px 10px rgba(0,0,0,0.04)' }}
       >
@@ -454,33 +496,37 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
                     setDrawerOpen(true);
                   }}
                   style={{ 
-                    border: '1px solid #f0f0f0', 
-                    padding: '14px 16px', 
-                    borderRadius: '10px', 
-                    background: '#fafafa',
+                    border: '1px solid #e8e8e8', 
+                    padding: '16px', 
+                    borderRadius: '12px', 
+                    background: '#ffffff',
                     cursor: 'pointer',
-                    transition: 'all 0.2s ease'
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <Text bold style={{ fontSize: '15px', color: '#1677ff', fontWeight: 700 }}>
-                      {code} <Text type="secondary" style={{ fontSize: '12px', fontWeight: 400 }}>({orderGroup.items.length} sp)</Text>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <Text bold style={{ fontSize: '17px', color: '#1677ff', fontWeight: 700 }}>
+                      {code} <Text type="secondary" style={{ fontSize: '13px', fontWeight: 400 }}>({orderGroup.items.length} sp)</Text>
                     </Text>
                     {orderGroup.ngayGiao && (
-                      <Tag icon={<CalendarOutlined />} color={isOverdue ? 'error' : 'blue'} style={{ margin: 0 }}>
+                      <Tag icon={<CalendarOutlined />} color={isOverdue ? 'error' : 'blue'} style={{ margin: 0, padding: '2px 8px', fontSize: '12px', borderRadius: '4px' }}>
                         {orderGroup.ngayGiao}
                       </Tag>
                     )}
                   </div>
                   
-                  <div style={{ marginBottom: '10px', fontSize: '12px', color: '#595959' }}>
-                    Khách: <Text style={{ fontWeight: 500 }}>{customerName}</Text>
+                  <div style={{ marginBottom: '12px', fontSize: '14px', color: '#595959', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <UserOutlined style={{ color: '#bfbfbf' }} />
+                    <Text type="secondary">Khách:</Text>
+                    <Text style={{ fontWeight: 600, color: '#262626' }}>{customerName}</Text>
                   </div>
 
                   <Progress 
                     percent={percent} 
                     status={percent >= 100 ? "success" : "active"}
                     strokeColor={percent >= 100 ? "#52c41a" : "#1677ff"}
+                    strokeWidth={10}
                   />
                 </div>
               </Col>
@@ -491,22 +537,28 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
 
       {/* Drawer Chi tiết khi Click Card */}
       <Drawer
-        title={`Chi tiết đơn hàng: ${selectedOrderGroup?.code}`}
-        width={500}
+        title={<span style={{ fontSize: '18px', fontWeight: 700 }}>Chi tiết đơn hàng: {selectedOrderGroup?.code}</span>}
+        width={550}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
       >
         {selectedOrderGroup && (
-          <div>
-            <p><strong>Khách hàng:</strong> {selectedOrderGroup.khachHang}</p>
-            <p><strong>Ngày giao:</strong> {selectedOrderGroup.ngayGiao || 'Chưa xếp'}</p>
-            <p><strong>Tiến độ trung bình:</strong> {selectedOrderGroup.percent}%</p>
-            <Title level={5} style={{ marginTop: 20 }}>Danh sách sản phẩm trong đơn ({selectedOrderGroup.items.length})</Title>
+          <div style={{ fontSize: '15px' }}>
+            <div style={{ background: '#fafafa', padding: '16px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #f0f0f0' }}>
+              <p style={{ margin: '0 0 8px 0' }}><strong>Khách hàng:</strong> {selectedOrderGroup.khachHang}</p>
+              <p style={{ margin: '0 0 8px 0' }}><strong>Ngày giao:</strong> {selectedOrderGroup.ngayGiao || 'Chưa xếp'}</p>
+              <p style={{ margin: 0 }}><strong>Tiến độ trung bình:</strong> <Text bold style={{ color: '#1677ff', fontSize: '16px' }}>{selectedOrderGroup.percent}%</Text></p>
+            </div>
+
+            <Title level={5} style={{ marginTop: 20, fontSize: '16px', fontWeight: 700 }}>
+              Danh sách sản phẩm trong đơn ({selectedOrderGroup.items.length})
+            </Title>
+            
             {selectedOrderGroup.items.map((it, idx) => (
-              <Card key={idx} size="small" style={{ marginBottom: 8 }}>
-                <p><strong>Sản phẩm:</strong> {it.tenSP || it.ten || selectedOrderGroup.code}</p>
-                <p><strong>Số lượng:</strong> {it.soLuong || 1}</p>
-                <Progress percent={getItemProgress(it)} size="small" />
+              <Card key={idx} size="small" style={{ marginBottom: 12, borderRadius: '8px', borderColor: '#e8e8e8' }} bodyStyle={{ padding: '14px' }}>
+                <p style={{ margin: '0 0 6px 0', fontSize: '15px' }}><strong>Sản phẩm:</strong> <Text bold style={{ color: '#262626' }}>{it.tenSP || it.ten || selectedOrderGroup.code}</Text></p>
+                <p style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#595959' }}><strong>Số lượng:</strong> {it.soLuong || 1}</p>
+                <Progress percent={getItemProgress(it)} strokeWidth={8} />
               </Card>
             ))}
           </div>
