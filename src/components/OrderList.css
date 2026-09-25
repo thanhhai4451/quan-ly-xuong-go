@@ -1,0 +1,254 @@
+.order-list {
+  margin-top: 16px;
+}
+
+.order-list__group-label {
+  padding: 8px 4px;
+}
+
+.order-list__group-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.order-list__group-meta,
+.order-list__product-info,
+.order-list__product-actions,
+.order-list__packing-fields,
+.order-list__packing-field,
+.order-list__packing-progress {
+  display: flex;
+  align-items: center;
+}
+
+.order-list__group-meta {
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.order-list__customer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.order-list__group-progress {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.order-list__group-progress .ant-progress {
+  flex: 1;
+  margin: 0;
+}
+
+.order-list__product-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
+  padding: 6px 8px 6px 0;
+  flex-wrap: wrap;
+}
+
+.order-list__product-info {
+  gap: 16px;
+  min-width: 0;
+  flex: 1 1 300px;
+}
+
+.order-list__product-copy {
+  min-width: 0;
+}
+
+.order-list__product-name {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-bottom: 4px;
+}
+
+.order-list__product-progress {
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 1 260px;
+}
+
+.order-list__progress-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.order-list__progress-label {
+  width: 75px;
+  flex: 0 0 75px;
+  text-align: right;
+}
+
+.order-list__progress-line .ant-progress {
+  flex: 1;
+  margin: 0;
+}
+
+.order-list__progress-value {
+  width: 40px;
+  flex: 0 0 40px;
+  text-align: right;
+}
+
+.order-list__product-actions {
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.order-list__details {
+  padding: 16px;
+  background: #fafafa;
+}
+
+.order-list__details-table {
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.order-list__packing {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.order-list__packing-fields {
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.order-list__packing-field {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.order-list__packing-progress {
+  gap: 10px;
+  min-width: 160px;
+  flex: 1 1 160px;
+  max-width: 280px;
+}
+
+.order-list__packing-progress .ant-progress {
+  flex: 1;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .order-list {
+    margin-top: 12px;
+  }
+
+  .order-list .ant-collapse-header {
+    padding: 12px 10px !important;
+  }
+
+  .order-list__group-label {
+    padding: 4px 0;
+  }
+
+  .order-list__group-meta {
+    display: block;
+  }
+
+  .order-list__group-meta > * {
+    margin: 0 8px 6px 0;
+  }
+
+  .order-list__group-progress {
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .order-list__product-label {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 12px;
+    padding: 4px 0;
+  }
+
+  .order-list__product-info {
+    grid-column: 1 / -1;
+    gap: 12px;
+  }
+
+  .order-list__product-progress {
+    width: 100%;
+    max-width: none;
+    grid-column: 1 / -1;
+    flex-basis: auto;
+  }
+
+  .order-list__product-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  .order-list__details {
+    padding: 10px 0;
+  }
+
+  .order-list__packing {
+    padding: 12px;
+    align-items: stretch;
+  }
+
+  .order-list__packing-fields,
+  .order-list__packing-field {
+    width: 100%;
+  }
+
+  .order-list__packing-field {
+    justify-content: space-between;
+  }
+
+  .order-list__packing-field .ant-input-number {
+    margin-left: auto;
+  }
+
+  .order-list__packing-progress {
+    width: 100%;
+    max-width: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .order-list__product-actions {
+    justify-content: stretch;
+  }
+
+  .order-list__product-actions .ant-btn {
+    flex: 1;
+  }
+
+  .order-list__packing-field {
+    gap: 6px;
+    font-size: 13px;
+  }
+
+  .order-list__packing-field .ant-typography {
+    overflow-wrap: anywhere;
+  }
+}

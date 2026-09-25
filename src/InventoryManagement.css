@@ -1,0 +1,255 @@
+.inventory-page {
+  min-height: 100vh;
+}
+
+.inventory-page__header {
+  gap: 16px;
+}
+
+.inventory-page__header-controls {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.inventory-page__content {
+  padding: 24px 40px;
+}
+
+.inventory-page__main-card {
+  overflow: hidden;
+}
+
+.inventory-dashboard {
+  margin-bottom: 24px;
+}
+
+.inventory-dashboard__card {
+  height: 100%;
+}
+
+.inventory-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.inventory-toolbar__filters,
+.inventory-toolbar__bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.inventory-toolbar__search {
+  width: 280px;
+}
+
+.inventory-report .ant-card-head {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.inventory-report .ant-card-extra {
+  margin-inline-start: auto;
+}
+
+.inventory-report__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inventory-page .ant-table-wrapper {
+  max-width: 100%;
+}
+
+.inventory-modal .ant-modal-content {
+  max-width: 100%;
+}
+
+.inventory-modal__list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.inventory-modal__list-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+@media (max-width: 992px) {
+  .inventory-page__content {
+    padding: 20px 24px;
+  }
+
+  .inventory-page__header {
+    height: auto;
+    min-height: 70px;
+    padding: 12px 24px;
+  }
+
+  .inventory-page__header-controls {
+    flex: 1;
+  }
+
+  .inventory-toolbar {
+    flex-direction: column;
+  }
+
+  .inventory-toolbar__filters {
+    width: 100%;
+  }
+
+  .inventory-toolbar__add {
+    align-self: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .inventory-page__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .inventory-page__header-controls {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .inventory-page__header-controls .ant-select {
+    flex: 1 1 220px;
+    min-width: 0;
+    width: auto !important;
+  }
+
+  .inventory-page__content {
+    padding: 12px;
+  }
+
+  .inventory-dashboard {
+    margin-bottom: 16px;
+  }
+
+  .inventory-dashboard > .ant-col {
+    flex: 0 0 50%;
+    max-width: 50%;
+  }
+
+  .inventory-dashboard__card .ant-card-body {
+    padding: 14px;
+  }
+
+  .inventory-dashboard__card .ant-statistic-title {
+    min-height: 36px;
+    font-size: 12px;
+  }
+
+  .inventory-dashboard__excel-tools {
+    gap: 6px;
+  }
+
+  .inventory-dashboard__excel-tools .ant-btn {
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+
+  .inventory-toolbar__filters,
+  .inventory-toolbar__bulk-actions {
+    width: 100%;
+  }
+
+  .inventory-toolbar__search {
+    width: 100%;
+  }
+
+  .inventory-toolbar__filters > .ant-btn,
+  .inventory-toolbar__bulk-actions .ant-btn {
+    flex: 1 1 180px;
+    min-height: 40px;
+  }
+
+  .inventory-toolbar__add {
+    width: 100%;
+  }
+
+  .inventory-page .ant-tabs-nav-wrap {
+    overflow-x: auto;
+  }
+
+  .inventory-page .ant-tabs-tab {
+    padding-inline: 10px;
+    white-space: nowrap;
+  }
+
+  .inventory-report .ant-card-head,
+  .inventory-report .ant-card-head-wrapper {
+    align-items: flex-start;
+  }
+
+  .inventory-report .ant-card-extra {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+
+  .inventory-report__controls {
+    width: 100%;
+  }
+
+  .inventory-report__controls .ant-picker,
+  .inventory-report__controls .ant-btn {
+    flex: 1;
+  }
+
+  .inventory-modal .ant-modal {
+    max-width: calc(100vw - 24px);
+    margin: 12px auto;
+  }
+
+  .inventory-modal .ant-modal-body {
+    max-height: calc(100vh - 170px);
+    overflow-y: auto;
+  }
+
+  .inventory-modal .ant-row > .ant-col {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .inventory-page__content {
+    padding: 8px;
+  }
+
+  .inventory-page__header {
+    padding: 10px 12px;
+  }
+
+  .inventory-page__header h4 {
+    font-size: 16px;
+  }
+
+  .inventory-dashboard > .ant-col {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+  .inventory-dashboard__card .ant-statistic-title {
+    min-height: auto;
+  }
+
+  .inventory-modal__list-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+}
