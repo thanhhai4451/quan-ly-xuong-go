@@ -1,11 +1,16 @@
 import React, { useMemo } from 'react';
 import { Table, Button, Space, Card, Tag, InputNumber, message, Typography, Empty, Badge } from 'antd';
-import { 
-  CheckCircleOutlined, SendOutlined, BoxPlotOutlined, 
-  HistoryOutlined, ClockCircleOutlined, RightCircleOutlined 
+import {
+  CheckCircleOutlined, SendOutlined, BoxPlotOutlined,
+  HistoryOutlined, ClockCircleOutlined, RightCircleOutlined
 } from '@ant-design/icons';
-import { ref, update } from 'firebase/database';
+import { ref, runTransaction } from 'firebase/database';
 import dayjs from 'dayjs';
+import {
+  getNextProductionStep,
+  getPreviousProductionStep,
+  getProductionTeamLabel,
+} from './utils/productionSteps';
 
 const { Text, Title } = Typography;
 
@@ -18,7 +23,7 @@ const TEAM_CONFIG = {
   dongGoi: { label: 'Tổ Đóng Gói', emails: ['hongyen@gmail.com', 'admin@gmail.com', 'haittpc08155@gmail.com'], next: null, color: '#f5222d' }
 };
 
-const ProductionTransfer = ({ orders, user, db }) => {
+const ProductionTransfer = ({ orders = [], user, db }) => {
   const isAdmin = user?.email === 'admin@gmail.com' || user?.email === 'haittpc08155@gmail.com';
 
   const myTeamKey = useMemo(() => {
@@ -26,107 +31,256 @@ const ProductionTransfer = ({ orders, user, db }) => {
   }, [user?.email]);
 
   const myTeamInfo = TEAM_CONFIG[myTeamKey];
-  const isGroupStep = ['lapRap', 'nham', 'son'].includes(myTeamKey);
-
+  // 1. Chuyển giao hàng sang tổ tiếp theo
   const handleTransfer = (orderFbKey, record, qty) => {
-    if (!qty || qty <= 0) return message.error("Vui lòng nhập số lượng!");
-    const order = orders.find(o => o.fbKey === orderFbKey);
-    const nextTeamKey = myTeamInfo.next;
-    
-    const newChiTiet = order.chiTiet.map(it => {
-      if (isGroupStep && record.isGroup && it.groupName === record.groupName) {
-        return { ...it, waitingConfirm: { ...it.waitingConfirm, [nextTeamKey]: (it.waitingConfirm?.[nextTeamKey] || 0) + qty } };
-      }
-      if (it.key === record.key) {
-        return { ...it, waitingConfirm: { ...it.waitingConfirm, [nextTeamKey]: (it.waitingConfirm?.[nextTeamKey] || 0) + qty } };
-      }
-      return it;
-    });
+    if (!qty || qty <= 0) return message.error("Vui lòng nhập số lượng hợp lệ!");
+    if (qty > record.available) return message.error(`Số lượng chuyển (${qty}) vượt quá tồn kho khả dụng (${record.available})!`);
 
-    update(ref(db, `orders/${orderFbKey}`), { chiTiet: newChiTiet })
-      .then(() => message.success(`🚀 Đã gửi ${qty} ${isGroupStep ? 'bộ' : 'cái'}!`));
+    const nextTeamKey = record.nextTeamKey;
+    if (!nextTeamKey) return message.error("Tổ hiện tại không có tổ kế tiếp!");
+
+    let failureMessage = "Không thể gửi: dữ liệu đơn hàng đã thay đổi, vui lòng tải lại.";
+    runTransaction(ref(db, `orders/${orderFbKey}`), (order) => {
+      if (!order || !Array.isArray(order.chiTiet)) return;
+
+      const targetItems = order.chiTiet.filter((item) =>
+        (record.isGroup
+          ? item.groupName === record.groupName
+          : item.key === record.key) &&
+        getNextProductionStep(myTeamKey, item.skipSteps || []) === nextTeamKey,
+      );
+      if (targetItems.length === 0) return;
+
+      const stagedValues = targetItems.map(
+        (item) => Number(item.choKiemDinh?.[myTeamKey]) || 0,
+      );
+      if (stagedValues.some((staged) => staged < qty)) {
+        failureMessage = "Số lượng treo kiểm định không đủ để gửi.";
+        return;
+      }
+
+      return {
+        ...order,
+        chiTiet: order.chiTiet.map((item) => {
+          const isTarget =
+            (record.isGroup
+              ? item.groupName === record.groupName
+              : item.key === record.key) &&
+            getNextProductionStep(myTeamKey, item.skipSteps || []) === nextTeamKey;
+          if (!isTarget) return item;
+
+          const remainingStaged =
+            (Number(item.choKiemDinh?.[myTeamKey]) || 0) - qty;
+          const nextStaged = { ...item.choKiemDinh };
+          if (remainingStaged > 0) {
+            nextStaged[myTeamKey] = remainingStaged;
+          } else {
+            delete nextStaged[myTeamKey];
+          }
+
+          return {
+            ...item,
+            choKiemDinh: nextStaged,
+            waitingConfirm: {
+              ...item.waitingConfirm,
+              [nextTeamKey]:
+                (Number(item.waitingConfirm?.[nextTeamKey]) || 0) + qty,
+            },
+          };
+        }),
+      };
+    })
+      .then(({ committed }) => {
+        if (committed) {
+          message.success(`🚀 Đã gửi ${qty} ${record.isGroup ? 'bộ' : 'cái'}!`);
+        } else {
+          message.error(failureMessage);
+        }
+      })
+      .catch(() => message.error("Lỗi cập nhật dữ liệu bàn giao!"));
   };
 
+  // 2. Xác nhận nhận hàng vào kho tổ
   const handleAccept = (orderFbKey, record) => {
     const order = orders.find(o => o.fbKey === orderFbKey);
-    const senderTeamKey = Object.keys(TEAM_CONFIG).find(key => TEAM_CONFIG[key].next === myTeamKey);
-    const qtyToAccept = record.qty;
+    if (!order) return;
 
-    const newChiTiet = order.chiTiet.map(it => {
-      const isTarget = (record.isGroup && it.groupName === record.groupName) || (it.key === record.key);
-      if (isTarget) {
-        return {
-          ...it,
-          tonKho: { ...it.tonKho, [myTeamKey]: (it.tonKho?.[myTeamKey] || 0) + qtyToAccept },
-          waitingConfirm: { ...it.waitingConfirm, [myTeamKey]: 0 },
-          daGiao: { ...it.daGiao, [senderTeamKey]: (it.daGiao?.[senderTeamKey] || 0) + qtyToAccept },
-          lichSuBanGiao: [{ 
-            id: Date.now(), 
-            ngay: dayjs().format('DD/MM HH:mm'), 
-            loai: 'NHAN_VAO', 
-            tu: senderTeamKey?.toUpperCase(), 
-            den: myTeamKey.toUpperCase(), 
-            sl: qtyToAccept, 
-            tenSP: order.tenSP, 
-            tenLK: record.displayName 
-          }, ...(it.lichSuBanGiao || [])]
-        };
+    if (!myTeamKey) return message.error("Không xác định được tổ nhận hàng!");
+
+    let failureMessage = "Không thể nhận: lô hàng đã được xử lý hoặc dữ liệu đã thay đổi.";
+    const logId = Date.now() + Math.random();
+    const logDate = dayjs().format('DD/MM HH:mm');
+    runTransaction(ref(db, `orders/${orderFbKey}`), (currentOrder) => {
+      if (!currentOrder || !Array.isArray(currentOrder.chiTiet)) return;
+
+      const targetItems = currentOrder.chiTiet.filter((item) =>
+        (record.isGroup
+          ? item.groupName === record.groupName
+          : item.key === record.key) &&
+        getPreviousProductionStep(myTeamKey, item.skipSteps || []) ===
+          record.fromTeamKey,
+      );
+      if (targetItems.length === 0) return;
+
+      const qtyToAccept =
+        Number(targetItems[0].waitingConfirm?.[myTeamKey]) || 0;
+      if (qtyToAccept <= 0) return;
+      if (
+        record.isGroup &&
+        targetItems.some(
+          (item) =>
+            (Number(item.waitingConfirm?.[myTeamKey]) || 0) !==
+            (Number(targetItems[0].waitingConfirm?.[myTeamKey]) || 0),
+        )
+      ) {
+        failureMessage = "Số lượng chờ nhận trong cụm không đồng nhất.";
+        return;
       }
-      return it;
-    });
 
-    update(ref(db, `orders/${orderFbKey}`), { chiTiet: newChiTiet })
-      .then(() => message.success("✅ Đã nhận vào kho!"));
+      return {
+        ...currentOrder,
+        chiTiet: currentOrder.chiTiet.map((item, index) => {
+          const senderTeamKey = getPreviousProductionStep(
+            myTeamKey,
+            item.skipSteps || [],
+          );
+          const isTarget =
+            (record.isGroup
+              ? item.groupName === record.groupName
+              : item.key === record.key) &&
+            senderTeamKey === record.fromTeamKey;
+          if (!isTarget) return item;
+          const itemQty = Number(item.waitingConfirm?.[myTeamKey]) || 0;
+          if (itemQty <= 0) return item;
+
+          return {
+            ...item,
+            tienDo: {
+              ...item.tienDo,
+              [senderTeamKey]:
+                (Number(item.tienDo?.[senderTeamKey]) || 0) + itemQty,
+            },
+            tonKho: {
+              ...item.tonKho,
+              [myTeamKey]:
+                (Number(item.tonKho?.[myTeamKey]) || 0) + itemQty,
+            },
+            waitingConfirm: { ...item.waitingConfirm, [myTeamKey]: 0 },
+            daGiao: {
+              ...item.daGiao,
+              [senderTeamKey]:
+                (Number(item.daGiao?.[senderTeamKey]) || 0) + itemQty,
+            },
+            lichSuBanGiao: [{
+              id: logId + index,
+              ngay: logDate,
+              loai: 'NHAN_VAO',
+              tu: senderTeamKey.toUpperCase(),
+              den: myTeamKey.toUpperCase(),
+              sl: itemQty,
+              tenSP: currentOrder.tenSP,
+              tenLK: record.isGroup ? item.name : record.displayName,
+            }, ...(item.lichSuBanGiao || [])],
+          };
+        }),
+      };
+    })
+      .then(({ committed }) => {
+        if (committed) message.success("✅ Đã xác nhận tiến độ và nhận vào kho!");
+        else message.error(failureMessage);
+      })
+      .catch(() => message.error("Lỗi tiếp nhận và xác nhận tiến độ!"));
   };
 
+  // 3. Gom nhóm và tính toán dữ liệu kho
   const { receiveData, pendingData, transferData, historyData } = useMemo(() => {
     let rec = [], pen = [], tra = [], his = [];
 
     orders.forEach(order => {
       const groupedData = {};
+
       order.chiTiet?.forEach(item => {
-        const isCurrentlyGrouped = ['lapRap', 'nham', 'son'].includes(myTeamKey);
-        const identifier = (isCurrentlyGrouped && item.groupName) ? `GROUP_${item.groupName}` : item.key;
+        const isCurrentlyGrouped = ['lapRap', 'nham', 'son', 'dongGoi'].includes(myTeamKey);
+        const isGroup = isCurrentlyGrouped && !!item.groupName;
+        const nextTeamKey = getNextProductionStep(myTeamKey, item.skipSteps || []);
+        const fromTeamKey = getPreviousProductionStep(myTeamKey, item.skipSteps || []);
+        const waitingMe = Number(item.waitingConfirm?.[myTeamKey]) || 0;
+        const baseIdentifier = isGroup ? `GROUP_${item.groupName}` : item.key;
+        const identifier = `${baseIdentifier}_${fromTeamKey || "START"}_${nextTeamKey || "END"}`;
+
+        if (myTeamKey === 'lapRap' && waitingMe > 0) {
+          rec.push({
+            ...item,
+            displayName: item.name,
+            isGroup: false,
+            orderName: order.tenSP,
+            orderFbKey: order.fbKey,
+            fromTeamKey,
+            qty: waitingMe,
+          });
+        }
         
         if (!groupedData[identifier]) {
+          const staged = Number(item.choKiemDinh?.[myTeamKey]) || 0;
           groupedData[identifier] = {
             ...item,
             displayName: (isCurrentlyGrouped && item.groupName) ? `CỤM: ${item.groupName.toUpperCase()}` : item.name,
-            isGroup: (isCurrentlyGrouped && !!item.groupName),
+            isGroup,
             orderName: order.tenSP,
             orderFbKey: order.fbKey,
-            available: 0, waitingMe: 0, waitingNext: 0
+            available: staged,
+            waitingMe: myTeamKey === 'lapRap' ? 0 : waitingMe,
+            waitingNext: Number(item.waitingConfirm?.[nextTeamKey]) || 0,
+            nextTeamKey,
+            fromTeamKey,
           };
+        } else if (isGroup) {
+          groupedData[identifier].available = Math.min(
+            groupedData[identifier].available,
+            Number(item.choKiemDinh?.[myTeamKey]) || 0,
+          );
+          groupedData[identifier].waitingMe = Math.max(
+            groupedData[identifier].waitingMe,
+            Number(item.waitingConfirm?.[myTeamKey]) || 0,
+          );
+          groupedData[identifier].waitingNext = Math.max(
+            groupedData[identifier].waitingNext,
+            Number(item.waitingConfirm?.[nextTeamKey]) || 0,
+          );
         }
-        groupedData[identifier].waitingMe = item.waitingConfirm?.[myTeamKey] || 0;
-        groupedData[identifier].waitingNext = item.waitingConfirm?.[myTeamInfo?.next] || 0;
-        
-        const done = item.tienDo?.[myTeamKey] || 0;
-        const handed = item.daGiao?.[myTeamKey] || 0;
-        groupedData[identifier].available = done - handed - groupedData[identifier].waitingNext;
 
+        // Lịch sử giao nhận
         item.lichSuBanGiao?.forEach(log => {
-          if (isAdmin || log.tu === myTeamKey?.toUpperCase() || log.den === myTeamKey?.toUpperCase()) his.push(log);
+          if (isAdmin || log.tu === myTeamKey?.toUpperCase() || log.den === myTeamKey?.toUpperCase()) {
+            his.push(log);
+          }
         });
       });
 
       Object.values(groupedData).forEach(obj => {
         if (obj.waitingMe > 0) rec.push({ ...obj, qty: obj.waitingMe });
-        if (obj.waitingNext > 0) pen.push({ ...obj, qty: obj.waitingNext, nextTeam: TEAM_CONFIG[myTeamInfo.next]?.label });
-        if (obj.available > 0 && myTeamInfo?.next) tra.push(obj);
+        if (obj.waitingNext > 0) {
+          pen.push({
+            ...obj,
+            qty: obj.waitingNext,
+            nextTeam: getProductionTeamLabel(obj.nextTeamKey),
+          });
+        }
+        if (obj.available > 0 && obj.nextTeamKey) tra.push(obj);
       });
     });
+
     return { receiveData: rec, pendingData: pen, transferData: tra, historyData: his };
-  }, [orders, myTeamKey, myTeamInfo, isAdmin]);
+  }, [orders, myTeamKey, isAdmin]);
 
   const cardStyle = { borderRadius: '12px', overflow: 'hidden', marginBottom: '16px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', border: 'none' };
   const headerStyle = (color) => ({ background: color, color: 'white', padding: '12px 16px', borderRadius: '12px 12px 0 0', display: 'flex', alignItems: 'center', gap: '8px' });
 
-  if (!myTeamKey && !isAdmin) return <Card style={{ margin: '20px' }}><Empty description="Email không thuộc hệ thống" /></Card>;
+  if (!myTeamKey && !isAdmin) return <Card style={{ margin: '20px' }}><Empty description="Email không thuộc hệ thống hoặc chưa được phân tổ" /></Card>;
 
   return (
     <div style={{ padding: '12px', background: '#f8fafc', minHeight: '100vh' }}>
-      {/* Header chính - Dùng BoxPlotOutlined ở đây */}
+      {/* Header chính */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px', background: 'white', padding: '15px', borderRadius: '15px' }}>
         <div style={{ width: '40px', height: '40px', background: myTeamInfo?.color || '#64748b', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', marginRight: '12px' }}>
           <BoxPlotOutlined style={{ color: 'white', fontSize: '20px' }} />
@@ -140,7 +294,7 @@ const ProductionTransfer = ({ orders, user, db }) => {
       {receiveData.length > 0 && (
         <Card title={null} style={cardStyle} bodyStyle={{ padding: 0 }}>
           <div style={headerStyle('#f5222d')}><CheckCircleOutlined /> <Text style={{ color: 'white', fontWeight: 600 }}>CẦN NHẬN HÀNG</Text></div>
-          <Table dataSource={receiveData} pagination={false} size="small" columns={[
+          <Table dataSource={receiveData} rowKey={(r) => `${r.orderFbKey}-${r.key}-${r.fromTeamKey || ''}`} pagination={false} size="small" columns={[
             { title: 'Sản phẩm', render: r => <div><Text strong>{r.orderName}</Text><br/><small>{r.displayName}</small></div> },
             { title: 'SL', align: 'center', render: r => <Badge count={r.qty} overflowCount={999999} color="#f5222d" /> },
             { title: 'Lệnh', align: 'right', render: r => <Button type="primary" danger size="small" onClick={() => handleAccept(r.orderFbKey, r)}>NHẬN</Button> }
@@ -148,11 +302,11 @@ const ProductionTransfer = ({ orders, user, db }) => {
         </Card>
       )}
 
-      {/* 2. ĐANG GỬI ĐI - Dùng ClockCircleOutlined và RightCircleOutlined ở đây */}
+      {/* 2. ĐANG GỬI ĐI */}
       {pendingData.length > 0 && (
         <Card title={null} style={cardStyle} bodyStyle={{ padding: 0 }}>
-          <div style={headerStyle('#fa8c16')}><ClockCircleOutlined /> <Text style={{ color: 'white', fontWeight: 600 }}>ĐANG GỬI (ĐỢI TỔ BẠN XÁC NHẬN)</Text></div>
-          <Table dataSource={pendingData} pagination={false} size="small" columns={[
+          <div style={headerStyle('#fa8c16')}><ClockCircleOutlined /> <Text style={{ color: 'white', fontWeight: 600 }}>ĐANG CHỜ TỔ NHẬN HÀNG XÁC NHẬN</Text></div>
+          <Table dataSource={pendingData} rowKey={(r) => `${r.orderFbKey}-${r.key}-${r.nextTeamKey || ''}`} pagination={false} size="small" columns={[
             { title: 'Sản phẩm', render: r => <div><Text strong>{r.orderName}</Text><br/><small>{r.displayName}</small></div> },
             { title: 'SL', align: 'center', render: r => <Tag color="orange">{r.qty}</Tag> },
             { title: 'Đến', render: r => <Tag icon={<RightCircleOutlined />} color="volcano">{r.nextTeam}</Tag> }
@@ -160,27 +314,35 @@ const ProductionTransfer = ({ orders, user, db }) => {
         </Card>
       )}
 
-      {/* 3. KHO TỔ & GIAO */}
+      {/* 3. KHO TỔ & BÀN GIAO */}
       {myTeamKey && (
         <Card title={null} style={cardStyle} bodyStyle={{ padding: 0 }}>
           <div style={headerStyle('#1890ff')}><SendOutlined /> <Text style={{ color: 'white', fontWeight: 600 }}>KHO TỔ & BÀN GIAO</Text></div>
-          <Table dataSource={transferData} size="small" columns={[
+          <Table dataSource={transferData} rowKey={(r) => `${r.orderFbKey}-${r.key}-${r.nextTeamKey || ''}`} size="small" columns={[
             { title: 'Hàng hóa', render: r => <div><Text strong>{r.orderName}</Text><br/><Text style={{fontSize:'11px', color: r.isGroup ? '#722ed1' : '#1890ff'}}>{r.displayName}</Text></div> },
             { title: 'Tồn', align: 'center', render: r => <Tag color="blue">{r.available} {r.isGroup ? 'Bộ' : 'Cái'}</Tag> },
-            { title: 'Giao', align: 'right', render: r => (
-              <Space.Compact>
-                <InputNumber min={1} max={r.available} defaultValue={r.available} id={`in-${r.isGroup ? r.groupName : r.key}`} style={{ width: '65px' }} />
-                <Button type="primary" onClick={() => handleTransfer(r.orderFbKey, r, Number(document.getElementById(`in-${r.isGroup ? r.groupName : r.key}`).value))}>GỬI</Button>
-              </Space.Compact>
-            )}
+            { title: 'Giao', align: 'right', render: r => {
+                const inputId = `in-${r.orderFbKey}-${r.isGroup ? r.groupName : r.key}-${r.nextTeamKey}`;
+                return (
+                  <Space.Compact>
+                    <InputNumber min={1} max={r.available} defaultValue={r.available} id={inputId} style={{ width: '65px' }} />
+                    <Button type="primary" onClick={() => {
+                      const inputEl = document.getElementById(inputId);
+                      const val = inputEl ? Number(inputEl.value) : r.available;
+                      handleTransfer(r.orderFbKey, r, val);
+                    }}>GỬI</Button>
+                  </Space.Compact>
+                );
+              }
+            }
           ]} />
         </Card>
       )}
 
-      {/* 4. LỊCH SỬ */}
+      {/* 4. LỊCH SỬ GIAO NHẬN */}
       <Card title={null} style={cardStyle} bodyStyle={{ padding: 0 }}>
         <div style={headerStyle('#64748b')}><HistoryOutlined /> <Text style={{ color: 'white', fontWeight: 600 }}>NHẬT KÝ GIAO NHẬN</Text></div>
-        <Table dataSource={historyData.sort((a,b)=>b.id-a.id)} size="small" pagination={{pageSize: 5}} columns={[
+        <Table dataSource={historyData.sort((a,b) => b.id - a.id)} rowKey="id" size="small" pagination={{ pageSize: 5 }} columns={[
           { title: 'Thời gian', dataIndex: 'ngay', width: 90 },
           { title: 'Truy vết', render: r => <div><Tag>{r.tu} → {r.den}</Tag> <b>{r.sl}</b> {r.tenLK}<br/><small>{r.tenSP}</small></div> }
         ]} />

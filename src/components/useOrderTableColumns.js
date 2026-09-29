@@ -7,8 +7,13 @@ import {
   Popover,
   List,
   Flex,
+  Tooltip,
 } from "antd";
-import { HistoryOutlined } from "@ant-design/icons";
+import { HistoryOutlined, ClockCircleOutlined, SyncOutlined } from "@ant-design/icons";
+import {
+  getNextProductionStep,
+  getProductionTeamLabel,
+} from "../utils/productionSteps";
 
 const { Text } = Typography;
 
@@ -29,39 +34,31 @@ export function useOrderTableColumns(
 
       const visibleSteps = STEPS_CONFIG.map((s) => s.id);
 
-      // 1. TỰ ĐỘNG GOM CÁC CHI TIẾT CÙNG CỤM LẠI VỚI NHAU
-      // Dù dữ liệu gốc nằm rải rác (1: Sàn trên, 2: Chân, 3: Sàn trên),
-      // mảng sortedList này sẽ tự gom thành (Sàn trên, Sàn trên, Chân)
       const rawList = orderData?.chiTiet || orderData?.items || [];
       const listData = [...rawList].sort((a, b) => {
         const groupA = a.groupName?.trim() || "";
         const groupB = b.groupName?.trim() || "";
         if (!groupA && !groupB) return 0;
-        if (!groupA) return 1;  // Không có cụm thì đẩy xuống dưới
+        if (!groupA) return 1;
         if (!groupB) return -1;
         return groupA.localeCompare(groupB);
       });
 
-      // 2. HÀM TÍNH ROWSPAN CHUẨN XÁC SAU KHÍ ĐÃ GOM NHÓM TỰ ĐỘNG
       const getGroupRowSpan = (record) => {
         const groupName = record.groupName?.trim();
         if (!groupName) return { rowSpan: 1 };
 
-        // Tìm index của record trong danh sách ĐÃ SẮP XẾP
         const currentIndex = listData.findIndex((i) => i.key === record.key);
         const firstIndex = listData.findIndex(
           (i) => i.groupName && i.groupName.trim() === groupName
         );
 
-        // Chỉ dòng đầu tiên của Cụm mới hiển thị ô gộp (rowSpan = tổng số item trong Cụm)
         if (currentIndex === firstIndex) {
           const count = listData.filter(
             (i) => i.groupName && i.groupName.trim() === groupName
           ).length;
           return { rowSpan: count };
         }
-
-        // Các dòng sau cùng Cụm thì ẩn ô đi
         return { rowSpan: 0 };
       };
 
@@ -69,7 +66,7 @@ export function useOrderTableColumns(
         {
           title: "CHI TIẾT",
           dataIndex: "name",
-          width: 80,
+          width: 120,
           fixed: "left",
           render: (text, record) => (
             <Flex vertical gap={0} align="start">
@@ -121,7 +118,7 @@ export function useOrderTableColumns(
         {
           title: "CỤM (BỘ PHẬN)",
           dataIndex: "groupName",
-          width: 150,
+          width: 130,
           align: "center",
           onCell: (record) => getGroupRowSpan(record),
           render: (val) =>
@@ -154,7 +151,7 @@ export function useOrderTableColumns(
         ...visibleSteps.map((step) => ({
           title: step.toUpperCase(),
           align: "center",
-          width: 110,
+          width: 120,
           onCell: (record) => {
             if (["lapRap", "nham", "son"].includes(step) && record.groupName) {
               return getGroupRowSpan(record);
@@ -171,47 +168,27 @@ export function useOrderTableColumns(
               );
 
             const isGroupStep = ["lapRap", "nham", "son"].includes(step);
-            const stepsOrder = [
-              "phoi",
-              "dinhHinh",
-              "lapRap",
-              "nham",
-              "son",
-              "dongGoi",
-            ];
-            const stepLabels = {
-              phoi: "PHÔI",
-              dinhHinh: "ĐỊNH HÌNH",
-              lapRap: "LẮP RÁP",
-              nham: "NHÁM",
-              son: "SƠN",
-              dongGoi: "ĐÓNG GÓI",
-            };
 
             const targetNeed =
               isGroupStep && record.groupName
                 ? Number(record.soBoCum) || 0
                 : Number(record.can) || 0;
-            const val = Number(record.tienDo?.[step]) || 0;
-            const remaining = targetNeed - val;
 
-            const prevStep = stepsOrder
-              .slice(0, stepsOrder.indexOf(step))
-              .reverse()
-              .find((s) => !(record.skipSteps || []).includes(s));
+            // 1. Số lượng ĐÃ ĐƯỢC TỔ SAU XÁC NHẬN (Tiến độ thực tế chính thức)
+            const confirmedVal = Number(record.tienDo?.[step]) || 0;
 
-            const prevStepVal = prevStep
-              ? isGroupStep && record.groupName
-                ? listData
-                    .filter((i) => i.groupName === record.groupName)
-                    .reduce(
-                      (acc, i) => acc + Number(i.tienDo?.[prevStep] || 0),
-                      0,
-                    )
-                : Number(record.tienDo?.[prevStep] || 0)
-              : 0;
+            // 2. Số lượng ĐANG TREO KIỂM ĐỊNH (Tổ A vừa nhập)
+            const pendingVal = record.choKiemDinh?.[step] !== undefined
+              ? Number(record.choKiemDinh[step])
+              : null;
 
-            const canEdit = !prevStep || prevStepVal > 0;
+            // 3. Số lượng đã gửi, đang chờ tổ kế tiếp xác nhận
+            const nextTeam = getNextProductionStep(step, record.skipSteps || []);
+            const waitingConfirmVal = Number(record.waitingConfirm?.[nextTeam]) || 0;
+            const displayedVal = pendingVal > 0 ? pendingVal : null;
+
+            // Số lượng còn thiếu dựa trên TIẾN ĐỘ CHÍNH THỨC (Chưa tính số đang treo)
+            const remaining = targetNeed - confirmedVal;
 
             return (
               <div style={{ padding: "2px" }}>
@@ -232,61 +209,82 @@ export function useOrderTableColumns(
                     {record.groupName.toUpperCase()}
                   </div>
                 )}
+
+                {/* Ô Nhập số lượng khai báo */}
                 <InputNumber
                   min={0}
-                  value={val}
-                  disabled={!canEdit}
+                  value={displayedVal}
+                  placeholder="Nhập thêm SL"
                   onBlur={(e) => {
-                    if (!canEdit) return;
-                    const rawValue = e.target.value.replace(/\./g, "");
+                    const rawValue = String(e.target.value ?? "").replace(/\./g, "");
                     const newVal = rawValue === "" ? 0 : Number(rawValue);
-                    if (newVal !== val) {
-                      if (record.groupName && isGroupStep)
-                        handleUpdateGroupRecord(
-                          fbKey,
-                          record.groupName,
-                          step,
-                          newVal,
-                        );
-                      else handleUpdateRecord(fbKey, record.key, step, newVal);
+
+                    if (newVal !== (pendingVal || 0)) {
+                      if (record.groupName && isGroupStep) {
+                        handleUpdateGroupRecord(fbKey, record.groupName, step, newVal);
+                      } else {
+                        handleUpdateRecord(fbKey, record.key, step, newVal);
+                      }
                     }
                   }}
                   style={{
                     width: "100%",
-                    fontWeight:
-                      record.groupName && isGroupStep ? "bold" : "normal",
-                    color: isGroupStep ? "#722ed1" : "#1890ff",
+                    fontWeight: "bold",
+                    borderColor: pendingVal > 0 ? "#fa8c16" : undefined,
+                    background: pendingVal > 0 ? "#fffbe6" : "#ffffff",
                   }}
                 />
-                {!canEdit && prevStep && (
-                  <Text
-                    type="secondary"
-                    style={{ fontSize: "10px", marginTop: 4, display: "block" }}
+
+                {/* Hiển thị các Trạng Thái Treo & Tiến Độ */}
+                <div style={{ marginTop: "4px", textAlign: "center", display: "flex", flexDirection: "column", gap: "2px" }}>
+                  <div
+                    style={{
+                      alignSelf: "center",
+                      padding: "3px 8px",
+                      borderRadius: "5px",
+                      background: "#e6f4ff",
+                      border: "1px solid #1677ff",
+                      color: "#0958d9",
+                      fontSize: "13px",
+                      fontWeight: 800,
+                      lineHeight: 1.4,
+                    }}
                   >
-                    Hoàn thành {stepLabels[prevStep]} trước khi nhập
-                  </Text>
-                )}
-                <div style={{ marginTop: "4px", textAlign: "center" }}>
-                  {remaining > 0 ? (
-                    <Text
-                      type="danger"
-                      style={{ fontSize: "11px", fontWeight: "bold" }}
-                    >
-                      Thiếu: {remaining}{" "}
-                      {isGroupStep && record.groupName ? "bộ" : "cái"}
-                    </Text>
-                  ) : remaining < 0 ? (
-                    <Text
-                      type="warning"
-                      style={{ fontSize: "11px", fontWeight: "bold" }}
-                    >
-                      Thừa: {Math.abs(remaining)}
-                    </Text>
-                  ) : val > 0 ? (
-                    <Tag color="success" style={{ fontSize: "10px" }}>
-                      ĐỦ
+                    ĐÃ XÁC NHẬN:{" "}
+                    <span style={{ fontSize: "15px", fontWeight: 900 }}>
+                      {confirmedVal}/{targetNeed}
+                    </span>
+                  </div>
+
+                  {/* Trạng thái 1: Vừa nhập số lượng, đang treo chờ Bàn giao */}
+                  {pendingVal > 0 && (
+                    <Tooltip title={`${getProductionTeamLabel(step)} đã khai báo số lượng này, chưa qua kiểm định / bàn giao`}>
+                      <Tag color="warning" icon={<SyncOutlined spin />} style={{ fontSize: "10px", margin: 0 }}>
+                        Treo KĐ: {pendingVal}
+                      </Tag>
+                    </Tooltip>
+                  )}
+
+                  {/* Trạng thái 2: Đã bàn giao, chờ tổ kế tiếp xác nhận */}
+                  {waitingConfirmVal > 0 && (
+                    <Tooltip title={`Đã bàn giao sang ${getProductionTeamLabel(nextTeam)}, chờ xác nhận`}>
+                      <Tag color="volcano" icon={<ClockCircleOutlined />} style={{ fontSize: "10px", margin: 0 }}>
+                        Đang chờ {getProductionTeamLabel(nextTeam)} nhận: {waitingConfirmVal}
+                      </Tag>
+                    </Tooltip>
+                  )}
+
+                  {/* Trạng thái 3: Hiển thị ĐÃ XÁC NHẬN ĐỦ hoặc Số lượng CHƯA ĐỦ */}
+                  {remaining <= 0 && confirmedVal > 0 ? (
+                    <Tag color="success" style={{ fontSize: "10px", margin: 0 }}>
+                      ĐÃ XÁC NHẬN ĐỦ
                     </Tag>
+                  ) : remaining > 0 ? (
+                    <Text type="danger" style={{ fontSize: "10px", fontWeight: "bold" }}>
+                      Thiếu: {remaining} {isGroupStep && record.groupName ? "bộ" : "cái"}
+                    </Text>
                   ) : null}
+
                 </div>
               </div>
             );

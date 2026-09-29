@@ -11,7 +11,14 @@ import {
 import dayjs from "dayjs";
 
 import { db, auth } from "./firebase";
-import { ref, push, onValue, remove, update } from "firebase/database";
+import {
+  ref,
+  push,
+  onValue,
+  remove,
+  update,
+  runTransaction,
+} from "firebase/database";
 import {
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -28,6 +35,10 @@ import ActivityLogTab from "./components/ActivityLogTab";
 import OrderFormModal from "./components/OrderFormModal";
 import { useOrderTableColumns } from "./components/useOrderTableColumns";
 import { calculateOrderProgress } from "./utils/progress";
+import {
+  getNextProductionStep,
+  getPreviousProductionStep,
+} from "./utils/productionSteps";
 
 const App = () => {
   const [page1, setPage1] = useState(1);
@@ -196,10 +207,10 @@ const App = () => {
   const handleUpdateGroupRecord = useCallback(
     (fbKey, groupName, to, value) => {
       const val = parseInt(value) || 0;
+      if (val < 0) return message.error("Số lượng khai báo không thể âm!");
       const order = orders.find((o) => o.fbKey === fbKey);
       if (!order || !groupName) return; // Bảo vệ dữ liệu khỏi undefined
 
-      const steps = ["phoi", "dinhHinh", "lapRap", "nham", "son", "dongGoi"];
       const stepLabels = {
         phoi: "PHÔI",
         dinhHinh: "ĐỊNH HÌNH",
@@ -209,69 +220,79 @@ const App = () => {
         dongGoi: "ĐÓNG GÓI",
       };
 
-      const stepIndex = steps.indexOf(to);
-      if (stepIndex > 0) {
-        const prevStep = steps[stepIndex - 1];
-        const groupItems = order.chiTiet.filter(
-          (it) => it.groupName === groupName,
-        );
-        const hasSkipped = groupItems.some((it) =>
-          (it.skipSteps || []).includes(prevStep),
-        );
-        if (!hasSkipped) {
-          const prevValSum = groupItems.reduce(
-            (acc, it) => acc + Number(it.tienDo?.[prevStep] || 0),
+      const groupItems = order.chiTiet.filter(
+        (it) => it.groupName === groupName,
+      );
+      const previousStep = getPreviousProductionStep(
+        to,
+        groupItems[0]?.skipSteps || [],
+      );
+      const nextStep = getNextProductionStep(
+        to,
+        groupItems[0]?.skipSteps || [],
+      );
+      const availableFromPreviousStep = previousStep
+        ? groupItems.reduce(
+            (total, it) => total + Number(it.tienDo?.[previousStep] || 0),
             0,
-          );
-          if (val > prevValSum) {
-            message.error(
-              `Không thể nhập số lượng lớn hơn tổng tổ trước (${stepLabels[prevStep]}: ${prevValSum})`,
-            );
-            return;
-          }
-        }
+          )
+        : Number(groupItems[0]?.soBoCum || groupItems[0]?.can || 0);
+      const confirmed = Number(groupItems[0]?.tienDo?.[to] || 0);
+      const waiting = Number(
+        groupItems[0]?.waitingConfirm?.[nextStep] || 0,
+      );
+      if (confirmed + waiting + val > availableFromPreviousStep) {
+        const previousLabel = previousStep
+          ? stepLabels[previousStep]
+          : "định mức";
+        message.error(
+          `Số lượng khai báo vượt phần còn lại (${previousLabel}: ${Math.max(
+            0,
+            availableFromPreviousStep - confirmed - waiting,
+          )})`,
+        );
+        return;
       }
 
-      const newChiTiet = order.chiTiet.map((it) => {
-        if (it.groupName === groupName) {
-          const hienTai = it.tienDo?.[to] || 0;
-          if (val === hienTai) return it;
+      const currentPending = Number(groupItems[0]?.choKiemDinh?.[to] || 0);
+      if (val === currentPending) return;
 
-          const newLog = {
-            id: Date.now() + Math.random(),
-            ngay: dayjs().format("DD/MM HH:mm"),
-            to: to.toUpperCase(),
-            sl: val,
-            chenhLech: val - hienTai,
-            userEmail: user?.email || "Thợ",
-          };
-
-          return {
-            ...it,
-            tienDo: { ...it.tienDo, [to]: val },
-            lichSu: [newLog, ...(it.lichSu || [])],
-          };
-        }
-        return it;
-      });
-
-      update(ref(db, `orders/${fbKey}`), { chiTiet: newChiTiet }).then(() =>
-        message.success(`Đã cập nhật cụm ${groupName.toUpperCase()}`),
-      );
+      runTransaction(ref(db, `orders/${fbKey}`), (currentOrder) => {
+        if (!currentOrder || !Array.isArray(currentOrder.chiTiet)) return;
+        return {
+          ...currentOrder,
+          chiTiet: currentOrder.chiTiet.map((it) =>
+            it.groupName === groupName
+              ? {
+                  ...it,
+                  choKiemDinh: { ...it.choKiemDinh, [to]: val },
+                }
+              : it,
+          ),
+        };
+      })
+        .then(({ committed }) => {
+          if (committed) {
+            message.success(`Đã khai báo cụm ${groupName.toUpperCase()}`);
+          } else {
+            message.error("Không thể cập nhật số lượng chờ kiểm định!");
+          }
+        })
+        .catch(() => message.error("Lỗi cập nhật số lượng chờ kiểm định!"));
     },
-    [orders, user],
+    [orders],
   ); // Các biến phụ thuộc của hàm này
 
   const handleUpdateRecord = useCallback(
     (fbKey, detailKey, to, value) => {
       const val = parseInt(value) || 0;
+      if (val < 0) return message.error("Số lượng khai báo không thể âm!");
       const order = orders.find((o) => o.fbKey === fbKey);
       if (!order) return;
 
       const item = order.chiTiet.find((i) => i.key === detailKey);
       if (!item) return;
 
-      const steps = ["phoi", "dinhHinh", "lapRap", "nham", "son", "dongGoi"];
       const stepLabels = {
         phoi: "PHÔI",
         dinhHinh: "ĐỊNH HÌNH",
@@ -280,68 +301,53 @@ const App = () => {
         son: "SƠN",
         dongGoi: "ĐÓNG GÓI",
       };
-      const stepIndex = steps.indexOf(to);
-      if (stepIndex > 0) {
-        const prevStep = steps[stepIndex - 1];
-        if (!(item.skipSteps || []).includes(prevStep)) {
-          const prevVal = Number(item.tienDo?.[prevStep] || 0);
-          if (val > prevVal) {
-            message.error(
-              `Không thể nhập số lượng lớn hơn tổ trước (${stepLabels[prevStep]}: ${prevVal})`,
-            );
-            return;
-          }
-        }
+      const previousStep = getPreviousProductionStep(to, item.skipSteps || []);
+      const nextStep = getNextProductionStep(to, item.skipSteps || []);
+      const availableFromPreviousStep = previousStep
+        ? Number(item.tienDo?.[previousStep] || 0)
+        : Number(item.can || 0);
+      const confirmed = Number(item.tienDo?.[to] || 0);
+      const waiting = Number(item.waitingConfirm?.[nextStep] || 0);
+      if (confirmed + waiting + val > availableFromPreviousStep) {
+        const previousLabel = previousStep
+          ? stepLabels[previousStep]
+          : "định mức";
+        message.error(
+          `Số lượng khai báo vượt phần còn lại (${previousLabel}: ${Math.max(
+            0,
+            availableFromPreviousStep - confirmed - waiting,
+          )})`,
+        );
+        return;
       }
 
-      const hienTai = item.tienDo?.[to] || 0;
-      if (val === hienTai) return;
+      const currentPending = Number(item.choKiemDinh?.[to] || 0);
+      if (val === currentPending) return;
 
-      const newChiTiet = order.chiTiet.map((it) => {
-        if (it.key === detailKey) {
-          const deadlineStep = it.deadlines?.[to];
-          let soNgayTreLuuLai = 0;
-          if (deadlineStep && val < it.can) {
-            const homNay = dayjs().startOf("day");
-            const ngayDeadline = dayjs(deadlineStep);
-            if (homNay.isAfter(ngayDeadline))
-              soNgayTreLuuLai = homNay.diff(ngayDeadline, "day");
+      runTransaction(ref(db, `orders/${fbKey}`), (currentOrder) => {
+        if (!currentOrder || !Array.isArray(currentOrder.chiTiet)) return;
+        return {
+          ...currentOrder,
+          chiTiet: currentOrder.chiTiet.map((it) =>
+            it.key === detailKey
+              ? {
+                  ...it,
+                  choKiemDinh: { ...it.choKiemDinh, [to]: val },
+                }
+              : it,
+          ),
+        };
+      })
+        .then(({ committed }) => {
+          if (committed) {
+            message.success(`Đã khai báo số lượng tổ ${to.toUpperCase()}`);
+          } else {
+            message.error("Không thể cập nhật số lượng chờ kiểm định!");
           }
-
-          const newLog = {
-            id: Date.now(),
-            ngay: dayjs().format("DD/MM HH:mm"),
-            to: to.toUpperCase(),
-            sl: val,
-            chenhLech: val - hienTai,
-            userEmail: user?.email || "Ẩn danh",
-            tre: soNgayTreLuuLai,
-          };
-
-          return {
-            ...it,
-            tienDo: { ...it.tienDo, [to]: val },
-            lichSu: [newLog, ...(it.lichSu || [])],
-          };
-        }
-        return it;
-      });
-
-      update(ref(db, `orders/${fbKey}`), { chiTiet: newChiTiet })
-        .then(() => {
-          message.success(`Đã cập nhật tổ ${to.toUpperCase()}`);
-          push(ref(db, "notifications/"), {
-            id: Date.now(),
-            title: "CẬP NHẬT SẢN XUẤT",
-            content: `${(user?.email || "ẨN DANH").split("@")[0].toUpperCase()} cập nhật [${item.name}] của đơn [${order.tenSP}]`,
-            time: dayjs().format("HH:mm DD/MM"),
-            type: "info",
-            isRead: false,
-          });
         })
-        .catch(() => message.error("Lỗi kết nối Database!"));
+        .catch(() => message.error("Lỗi cập nhật số lượng chờ kiểm định!"));
     },
-    [orders, user],
+    [orders],
   ); // Các biến phụ thuộc của hàm này
 const handleUpdateDongGoi = (order, field, value) => {
   const val = Number(value) || 0;
