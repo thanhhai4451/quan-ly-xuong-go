@@ -239,10 +239,12 @@ const ProductionTransfer = ({ orders = [], user, db }) => {
             groupedData[identifier].available,
             Number(item.choKiemDinh?.[myTeamKey]) || 0,
           );
-          groupedData[identifier].waitingMe = Math.max(
-            groupedData[identifier].waitingMe,
-            Number(item.waitingConfirm?.[myTeamKey]) || 0,
-          );
+          if (myTeamKey !== 'lapRap') {
+            groupedData[identifier].waitingMe = Math.max(
+              groupedData[identifier].waitingMe,
+              Number(item.waitingConfirm?.[myTeamKey]) || 0,
+            );
+          }
           groupedData[identifier].waitingNext = Math.max(
             groupedData[identifier].waitingNext,
             Number(item.waitingConfirm?.[nextTeamKey]) || 0,
