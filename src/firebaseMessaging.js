@@ -2,7 +2,9 @@ import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messagi
 import { ref, set } from 'firebase/database';
 import { app, db } from './firebase';
 
-const VAPID_KEY = process.env.REACT_APP_FIREBASE_VAPID_KEY;
+const VAPID_KEY =
+  process.env.REACT_APP_FIREBASE_VAPID_KEY ||
+  'BADmcbA3s2F039ypNX9YIZ7Oiqe0FT6ST_wVUdm9ceaSGd5j64IT8-jzC06pdmYcPSMfJayBX879tpf5t9_k3ng';
 
 export async function registerMessagingServiceWorker() {
   if (!('serviceWorker' in navigator)) {

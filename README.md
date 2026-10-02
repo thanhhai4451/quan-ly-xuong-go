@@ -8,8 +8,8 @@ Chạy `npm install` để cài các phụ thuộc, sau đó dùng `npm start` �
 
 Ứng dụng có manifest cài đặt, service worker Firebase Cloud Messaging và nút **Bật thông báo** trong thanh tiêu đề. Firebase Console cần bật Cloud Messaging và có Web Push certificates (VAPID).
 
-1. Sao chép `.env.example` thành `.env.local` và đặt `REACT_APP_FIREBASE_VAPID_KEY` bằng khóa công khai Web Push trong Firebase Console.
-2. Khởi động lại ứng dụng sau khi cập nhật biến môi trường. Cấp quyền thông báo trên HTTPS (hoặc `localhost`); trên iOS cần thêm ứng dụng vào Màn hình chính trước khi bật Web Push.
+1. Khóa VAPID public hiện được cấu hình làm giá trị mặc định trong frontend để workflow GitHub Actions có thể build ứng dụng. Có thể ghi đè bằng `REACT_APP_FIREBASE_VAPID_KEY` trong `.env.local` khi phát triển; sao chép `.env.example` thành `.env.local` nếu cần tùy chỉnh.
+2. Cấp quyền thông báo trên HTTPS (hoặc `localhost`); trên iOS cần iOS 16.4 trở lên và thêm ứng dụng vào Màn hình chính trước khi bật Web Push.
 3. Khi người dùng cho phép, token được lưu tại `fcmTokens/{uid}/{tokenKey}` trong Realtime Database. Cấu hình Database Rules để chỉ người dùng đã đăng nhập đọc/ghi nhánh UID của chính mình, ví dụ:
 
 ```json
