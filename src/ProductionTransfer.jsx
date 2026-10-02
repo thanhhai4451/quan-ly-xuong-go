@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Table, Button, Space, Card, Tag, InputNumber, message, Typography, Empty, Badge } from 'antd';
+import { Table, Button, Space, Card, Tag, InputNumber, message, Typography, Empty, Badge, Popconfirm } from 'antd';
 import {
   CheckCircleOutlined, SendOutlined, BoxPlotOutlined,
   HistoryOutlined, ClockCircleOutlined, RightCircleOutlined
@@ -16,7 +16,7 @@ const { Text, Title } = Typography;
 
 const TEAM_CONFIG = {
   phoi: { label: 'Tổ Phôi', emails: ['sinhnguyen@gmail.com', 'chuthoi@gmail.com', 'admin@gmail.com', 'haittpc08155@gmail.com'], next: 'dinhHinh', color: '#1890ff' },
-  dinhHinh: { label: 'Tổ Định Hình', emails: ['chaunho@gmail.com','chaulon@gmail.com', 'admin@gmail.com', 'haittpc08155@gmail.com'], next: 'lapRap', color: '#722ed1' },
+  dinhHinh: { label: 'Tổ Định Hình', emails: ['chaunho@gmail.com','chaulon@gmail.com','khongo@gmail.com', 'admin@gmail.com', 'haittpc08155@gmail.com'], next: 'lapRap', color: '#722ed1' },
   lapRap: { label: 'Tổ Lắp Ráp', emails: ['cubi@gmail.com', 'admin@gmail1.com', 'haittpc08155@gmail.com'], next: 'nham', color: '#fa8c16' },
   nham: { label: 'Tổ Trà Nhám', emails: ['phanvantang@gmail.com', 'admin@gmail.com', 'haittpc08155@gmail.com'], next: 'son', color: '#eb2f96' },
   son: { label: 'Tổ Sơn', emails: ['canhnguyen@gmail.com', 'admin@gmail.com', 'haittpc08155@gmail.com'], next: 'dongGoi', color: '#52c41a' },
@@ -192,6 +192,76 @@ const ProductionTransfer = ({ orders = [], user, db }) => {
       .catch(() => message.error("Lỗi tiếp nhận và xác nhận tiến độ!"));
   };
 
+  const handleReject = (orderFbKey, record) => {
+    if (!myTeamKey) return message.error("Không xác định được tổ nhận hàng!");
+
+    let failureMessage = "Không thể từ chối: lô hàng đã được xử lý hoặc dữ liệu đã thay đổi.";
+    const logId = Date.now() + Math.random();
+    const logDate = dayjs().format('DD/MM HH:mm');
+
+    runTransaction(ref(db, `orders/${orderFbKey}`), (currentOrder) => {
+      if (!currentOrder || !Array.isArray(currentOrder.chiTiet)) return;
+
+      const matchesRecord = (item) =>
+        (record.isGroup
+          ? item.groupName === record.groupName
+          : item.key === record.key) &&
+        getPreviousProductionStep(myTeamKey, item.skipSteps || []) ===
+          record.fromTeamKey;
+      const targetItems = currentOrder.chiTiet.filter(matchesRecord);
+      if (targetItems.length === 0) return;
+
+      const waitingValues = targetItems.map(
+        (item) => Number(item.waitingConfirm?.[myTeamKey]) || 0,
+      );
+      if (waitingValues.some((qty) => qty <= 0)) return;
+      if (record.isGroup && waitingValues.some((qty) => qty !== waitingValues[0])) {
+        failureMessage = "Không thể từ chối: số lượng chờ nhận trong cụm không đồng nhất.";
+        return;
+      }
+
+      return {
+        ...currentOrder,
+        chiTiet: currentOrder.chiTiet.map((item, index) => {
+          if (!matchesRecord(item)) return item;
+          const qty = Number(item.waitingConfirm?.[myTeamKey]) || 0;
+          if (qty <= 0) return item;
+
+          const waitingConfirm = { ...item.waitingConfirm };
+          delete waitingConfirm[myTeamKey];
+
+          return {
+            ...item,
+            choKiemDinh: {
+              ...item.choKiemDinh,
+              [record.fromTeamKey]:
+                (Number(item.choKiemDinh?.[record.fromTeamKey]) || 0) + qty,
+            },
+            waitingConfirm,
+            lichSuBanGiao: [{
+              id: logId + index,
+              ngay: logDate,
+              loai: 'TU_CHOI',
+              tu: myTeamKey.toUpperCase(),
+              den: record.fromTeamKey.toUpperCase(),
+              sl: qty,
+              tenSP: currentOrder.tenSP,
+              tenLK: record.isGroup ? item.name : record.displayName,
+            }, ...(item.lichSuBanGiao || [])],
+          };
+        }),
+      };
+    })
+      .then(({ committed }) => {
+        if (committed) {
+          message.success("Đã trả lô hàng về tổ gửi để kiểm tra và khai báo lại.");
+        } else {
+          message.error(failureMessage);
+        }
+      })
+      .catch(() => message.error("Lỗi trả lô hàng về tổ gửi!"));
+  };
+
   // 3. Gom nhóm và tính toán dữ liệu kho
   const { receiveData, pendingData, transferData, historyData } = useMemo(() => {
     let rec = [], pen = [], tra = [], his = [];
@@ -299,7 +369,21 @@ const ProductionTransfer = ({ orders = [], user, db }) => {
           <Table dataSource={receiveData} rowKey={(r) => `${r.orderFbKey}-${r.key}-${r.fromTeamKey || ''}`} pagination={false} size="small" columns={[
             { title: 'Sản phẩm', render: r => <div><Text strong>{r.orderName}</Text><br/><small>{r.displayName}</small></div> },
             { title: 'SL', align: 'center', render: r => <Badge count={r.qty} overflowCount={999999} color="#f5222d" /> },
-            { title: 'Lệnh', align: 'right', render: r => <Button type="primary" danger size="small" onClick={() => handleAccept(r.orderFbKey, r)}>NHẬN</Button> }
+            { title: 'Lệnh', align: 'right', render: r => (
+              <Space>
+                <Popconfirm
+                  title="Từ chối nhận lô hàng này?"
+                  description="Số lượng sẽ được trả về phần khai báo của tổ gửi để chỉnh sửa và bàn giao lại."
+                  okText="TỪ CHỐI"
+                  cancelText="HỦY"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => handleReject(r.orderFbKey, r)}
+                >
+                  <Button danger size="small">TỪ CHỐI</Button>
+                </Popconfirm>
+                <Button type="primary" danger size="small" onClick={() => handleAccept(r.orderFbKey, r)}>NHẬN</Button>
+              </Space>
+            ) }
           ]} />
         </Card>
       )}
