@@ -63,6 +63,9 @@ const App = () => {
 
   const [realtimeNotis, setRealtimeNotis] = useState([]);
   const isAdmin = user?.email === "admin@gmail.com";
+  const canViewDashboard = ["admin@gmail.com", "mah@gmail.com"].includes(
+    user?.email?.toLowerCase(),
+  );
   const [khoDu, setKhoDu] = useState({}); // Dán dòng này chung với các useState khác
 
   useEffect(() => {
@@ -751,16 +754,21 @@ const stats = useMemo(() => {
 
       <Tabs
         type="card"
+        defaultActiveKey={canViewDashboard ? "dashboard" : "1"}
         items={[
-          {
-            key: "dashboard",
-            label: (
-              <b>
-                <DashboardOutlined /> BÁO CÁO TỔNG QUAN
-              </b>
-            ),
-            children: <DashboardTab orders={orders} khoDu={khoDu} />,
-          },
+          ...(canViewDashboard
+            ? [
+                {
+                  key: "dashboard",
+                  label: (
+                    <b>
+                      <DashboardOutlined /> BÁO CÁO TỔNG QUAN
+                    </b>
+                  ),
+                  children: <DashboardTab orders={orders} khoDu={khoDu} />,
+                },
+              ]
+            : []),
           {
             key: "1",
             label: (
