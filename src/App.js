@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { Modal, Form, message, Tabs } from "antd";
+import { Modal, Form, message, notification, Tabs } from "antd";
 import {
   CarryOutOutlined,
   HistoryOutlined,
@@ -30,6 +30,10 @@ import DashboardTab from "./components/DashboardTab";
 import ExtraStock from "./ExtraStock";
 import LoginScreen from "./components/LoginScreen";
 import AppHeader from "./components/AppHeader";
+import {
+  listenForForegroundMessages,
+  requestPushPermission,
+} from "./firebaseMessaging";
 import ProductionManagementTab from "./components/ProductionManagementTab";
 import ActivityLogTab from "./components/ActivityLogTab";
 import OrderFormModal from "./components/OrderFormModal";
@@ -93,6 +97,41 @@ const App = () => {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!user?.uid) return undefined;
+
+    let isActive = true;
+    let unsubscribe;
+    listenForForegroundMessages((payload) => {
+      notification.open({
+        message:
+          payload.notification?.title ||
+          payload.data?.title ||
+          "Thông báo mới",
+        description:
+          payload.notification?.body ||
+          payload.data?.body ||
+          "Bạn có thông báo mới.",
+        placement: "topRight",
+      });
+    })
+      .then((stopListening) => {
+        if (isActive) {
+          unsubscribe = stopListening;
+        } else {
+          stopListening();
+        }
+      })
+      .catch((error) => {
+        console.error("Không thể lắng nghe thông báo FCM:", error);
+      });
+
+    return () => {
+      isActive = false;
+      unsubscribe?.();
+    };
+  }, [user?.uid]);
 
   useEffect(() => {
     if (!user) return;
@@ -408,6 +447,15 @@ const handleUpdateDongGoi = (order, field, value) => {
 };
   const handleLogout = () =>
     signOut(auth).then(() => message.info("Đã đăng xuất!"));
+
+  const handleEnablePush = async () => {
+    try {
+      await requestPushPermission(user.uid);
+      message.success("Đã bật thông báo đẩy trên thiết bị này.");
+    } catch (error) {
+      message.error(error.message || "Không thể bật thông báo đẩy.");
+    }
+  };
 
   const handleDeliverOrder = (fbKey) => {
     const order = orders.find((o) => o.fbKey === fbKey);
@@ -750,6 +798,7 @@ const stats = useMemo(() => {
         onDeleteNoti={deleteNoti}
         user={user}
         onLogout={handleLogout}
+        onEnablePush={handleEnablePush}
       />
 
       <Tabs

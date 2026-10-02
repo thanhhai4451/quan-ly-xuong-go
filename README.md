@@ -1,4 +1,33 @@
-# Getting Started with Create React App
+# Quản Lý Xưởng Gỗ
+
+## Chạy ứng dụng
+
+Chạy `npm install` để cài các phụ thuộc, sau đó dùng `npm start` để chạy ở chế độ phát triển hoặc `npm run build` để tạo bản production trong thư mục `build`.
+
+## PWA và thông báo đẩy
+
+Ứng dụng có manifest cài đặt, service worker Firebase Cloud Messaging và nút **Bật thông báo** trong thanh tiêu đề. Firebase Console cần bật Cloud Messaging và có Web Push certificates (VAPID).
+
+1. Sao chép `.env.example` thành `.env.local` và đặt `REACT_APP_FIREBASE_VAPID_KEY` bằng khóa công khai Web Push trong Firebase Console.
+2. Khởi động lại ứng dụng sau khi cập nhật biến môi trường. Cấp quyền thông báo trên HTTPS (hoặc `localhost`); trên iOS cần thêm ứng dụng vào Màn hình chính trước khi bật Web Push.
+3. Khi người dùng cho phép, token được lưu tại `fcmTokens/{uid}/{tokenKey}` trong Realtime Database. Cấu hình Database Rules để chỉ người dùng đã đăng nhập đọc/ghi nhánh UID của chính mình, ví dụ:
+
+```json
+{
+  "rules": {
+    "fcmTokens": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    }
+  }
+}
+```
+
+4. Backend mẫu nằm ở `backend/sendPushNotification.js`. Cài `firebase-admin` trong môi trường Node.js backend, thiết lập Application Default Credentials và cấu hình `databaseURL` cho Firebase Admin app. Gọi `sendPushNotificationToUser(uid, { title, body, data })`; thông tin xác thực Admin không được đưa vào React frontend.
+
+Nếu đổi Firebase project, cập nhật cấu hình đồng bộ trong `src/firebase.js` và `public/firebase-messaging-sw.js`. Web Push không được cung cấp trên mọi trình duyệt/nền tảng. Frontend kiểm tra hỗ trợ trước khi lấy token và hiển thị lỗi nếu VAPID, quyền thông báo hoặc cấu hình Firebase chưa sẵn sàng.
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
