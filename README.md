@@ -25,7 +25,7 @@ Chạy `npm install` để cài các phụ thuộc, sau đó dùng `npm start` �
 }
 ```
 
-4. Backend mẫu nằm ở `backend/sendPushNotification.js`. Cài `firebase-admin` trong môi trường Node.js backend, thiết lập Application Default Credentials và cấu hình `databaseURL` cho Firebase Admin app. Gọi `sendPushNotificationToUser(uid, { title, body, data })`; thông tin xác thực Admin không được đưa vào React frontend.
+4. Các thông báo sự kiện được gửi tự động bởi Cloud Functions trong `functions/index.js`: tạo đơn mới gửi tới mọi thiết bị đã đăng ký; khi Tổ Phôi bàn giao cho Tổ Định Hình thì gửi tới các tài khoản trong tổ; khi đơn đóng gói đủ và chuyển sang chờ giao thì gửi tới mọi thiết bị đã đăng ký. Tài khoản tổ Định Hình được xác định bằng email Firebase Authentication được cấu hình trong hàm. Để triển khai Cloud Functions, dự án Firebase cần bật billing plan Blaze; sau khi push mã lên `main`, workflow deploy sẽ triển khai cả Hosting và Functions. Tài khoản đã bật thông báo trước đây vẫn nhận đơn mới/chờ giao, nhưng cần bấm **Bật thông báo** lại nếu thiết bị chưa đăng ký hoặc cần cập nhật token.
 
 Nếu đổi Firebase project, cập nhật cấu hình đồng bộ trong `src/firebase.js` và `public/firebase-messaging-sw.js`. Web Push không được cung cấp trên mọi trình duyệt/nền tảng. Frontend kiểm tra hỗ trợ trước khi lấy token và hiển thị lỗi nếu VAPID, quyền thông báo hoặc cấu hình Firebase chưa sẵn sàng.
 
