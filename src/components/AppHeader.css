@@ -1,0 +1,46 @@
+.app-header-card .ant-card-body {
+  padding: 15px 25px;
+}
+
+.app-header__user {
+  text-align: right;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.app-header__user .ant-typography:last-child {
+  display: inline-block;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+@media (max-width: 767px) {
+  .app-header-card .ant-card-body {
+    padding: 14px 16px;
+  }
+
+  .app-header__row {
+    row-gap: 16px;
+  }
+
+  .app-header__title-col,
+  .app-header__controls-col {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+
+  .app-header__title {
+    font-size: 22px;
+    line-height: 1.35;
+  }
+
+  .app-header__controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    width: 100%;
+    gap: 8px !important;
+  }
+}
