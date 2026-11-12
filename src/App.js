@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { Modal, Form, message, notification, Tabs } from "antd";
+import { Modal, Form, message, Tabs } from "antd";
 import {
   CarryOutOutlined,
   HistoryOutlined,
@@ -30,10 +30,6 @@ import DashboardTab from "./components/DashboardTab";
 import ExtraStock from "./ExtraStock";
 import LoginScreen from "./components/LoginScreen";
 import AppHeader from "./components/AppHeader";
-import {
-  listenForForegroundMessages,
-  requestPushPermission,
-} from "./firebaseMessaging";
 import ProductionManagementTab from "./components/ProductionManagementTab";
 import ActivityLogTab from "./components/ActivityLogTab";
 import OrderFormModal from "./components/OrderFormModal";
@@ -97,41 +93,6 @@ const App = () => {
     });
     return () => unsubscribe();
   }, []);
-
-  useEffect(() => {
-    if (!user?.uid) return undefined;
-
-    let isActive = true;
-    let unsubscribe;
-    listenForForegroundMessages((payload) => {
-      notification.open({
-        message:
-          payload.notification?.title ||
-          payload.data?.title ||
-          "Thông báo mới",
-        description:
-          payload.notification?.body ||
-          payload.data?.body ||
-          "Bạn có thông báo mới.",
-        placement: "topRight",
-      });
-    })
-      .then((stopListening) => {
-        if (isActive) {
-          unsubscribe = stopListening;
-        } else {
-          stopListening();
-        }
-      })
-      .catch((error) => {
-        console.error("Không thể lắng nghe thông báo FCM:", error);
-      });
-
-    return () => {
-      isActive = false;
-      unsubscribe?.();
-    };
-  }, [user?.uid]);
 
   useEffect(() => {
     if (!user) return;
@@ -265,6 +226,9 @@ const App = () => {
       const groupItems = order.chiTiet.filter(
         (it) => it.groupName === groupName,
       );
+      const currentConfirmed = Number(groupItems[0]?.tienDo?.[to] || 0);
+      if (isAdmin && val === currentConfirmed) return;
+
       const previousStep = getPreviousProductionStep(
         to,
         groupItems[0]?.skipSteps || [],
@@ -283,7 +247,10 @@ const App = () => {
       const waiting = Number(
         groupItems[0]?.waitingConfirm?.[nextStep] || 0,
       );
-      if (confirmed + waiting + val > availableFromPreviousStep) {
+      if (
+        !isAdmin &&
+        confirmed + waiting + val > availableFromPreviousStep
+      ) {
         const previousLabel = previousStep
           ? stepLabels[previousStep]
           : "định mức";
@@ -297,7 +264,7 @@ const App = () => {
       }
 
       const currentPending = Number(groupItems[0]?.choKiemDinh?.[to] || 0);
-      if (val === currentPending) return;
+      if (!isAdmin && val === currentPending) return;
 
       runTransaction(ref(db, `orders/${fbKey}`), (currentOrder) => {
         if (!currentOrder || !Array.isArray(currentOrder.chiTiet)) return;
@@ -305,24 +272,37 @@ const App = () => {
           ...currentOrder,
           chiTiet: currentOrder.chiTiet.map((it) =>
             it.groupName === groupName
-              ? {
-                  ...it,
-                  choKiemDinh: { ...it.choKiemDinh, [to]: val },
-                }
+              ? isAdmin
+                ? { ...it, tienDo: { ...it.tienDo, [to]: val } }
+                : { ...it, choKiemDinh: { ...it.choKiemDinh, [to]: val } }
               : it,
           ),
         };
       })
         .then(({ committed }) => {
           if (committed) {
-            message.success(`Đã khai báo cụm ${groupName.toUpperCase()}`);
+            message.success(
+              isAdmin
+                ? `Đã cập nhật số lượng tổ ${to.toUpperCase()} cho cụm ${groupName.toUpperCase()}`
+                : `Đã khai báo cụm ${groupName.toUpperCase()}`,
+            );
           } else {
-            message.error("Không thể cập nhật số lượng chờ kiểm định!");
+            message.error(
+              isAdmin
+                ? "Không thể cập nhật số lượng tổ!"
+                : "Không thể cập nhật số lượng chờ kiểm định!",
+            );
           }
         })
-        .catch(() => message.error("Lỗi cập nhật số lượng chờ kiểm định!"));
+        .catch(() =>
+          message.error(
+            isAdmin
+              ? "Lỗi cập nhật số lượng tổ!"
+              : "Lỗi cập nhật số lượng chờ kiểm định!",
+          ),
+        );
     },
-    [orders],
+    [orders, isAdmin],
   ); // Các biến phụ thuộc của hàm này
 
   const handleUpdateRecord = useCallback(
@@ -334,6 +314,8 @@ const App = () => {
 
       const item = order.chiTiet.find((i) => i.key === detailKey);
       if (!item) return;
+      const currentConfirmed = Number(item.tienDo?.[to] || 0);
+      if (isAdmin && val === currentConfirmed) return;
 
       const stepLabels = {
         phoi: "PHÔI",
@@ -350,7 +332,10 @@ const App = () => {
         : Number(item.can || 0);
       const confirmed = Number(item.tienDo?.[to] || 0);
       const waiting = Number(item.waitingConfirm?.[nextStep] || 0);
-      if (confirmed + waiting + val > availableFromPreviousStep) {
+      if (
+        !isAdmin &&
+        confirmed + waiting + val > availableFromPreviousStep
+      ) {
         const previousLabel = previousStep
           ? stepLabels[previousStep]
           : "định mức";
@@ -364,7 +349,7 @@ const App = () => {
       }
 
       const currentPending = Number(item.choKiemDinh?.[to] || 0);
-      if (val === currentPending) return;
+      if (!isAdmin && val === currentPending) return;
 
       runTransaction(ref(db, `orders/${fbKey}`), (currentOrder) => {
         if (!currentOrder || !Array.isArray(currentOrder.chiTiet)) return;
@@ -372,24 +357,37 @@ const App = () => {
           ...currentOrder,
           chiTiet: currentOrder.chiTiet.map((it) =>
             it.key === detailKey
-              ? {
-                  ...it,
-                  choKiemDinh: { ...it.choKiemDinh, [to]: val },
-                }
+              ? isAdmin
+                ? { ...it, tienDo: { ...it.tienDo, [to]: val } }
+                : { ...it, choKiemDinh: { ...it.choKiemDinh, [to]: val } }
               : it,
           ),
         };
       })
         .then(({ committed }) => {
           if (committed) {
-            message.success(`Đã khai báo số lượng tổ ${to.toUpperCase()}`);
+            message.success(
+              isAdmin
+                ? `Đã cập nhật số lượng tổ ${to.toUpperCase()}`
+                : `Đã khai báo số lượng tổ ${to.toUpperCase()}`,
+            );
           } else {
-            message.error("Không thể cập nhật số lượng chờ kiểm định!");
+            message.error(
+              isAdmin
+                ? "Không thể cập nhật số lượng tổ!"
+                : "Không thể cập nhật số lượng chờ kiểm định!",
+            );
           }
         })
-        .catch(() => message.error("Lỗi cập nhật số lượng chờ kiểm định!"));
+        .catch(() =>
+          message.error(
+            isAdmin
+              ? "Lỗi cập nhật số lượng tổ!"
+              : "Lỗi cập nhật số lượng chờ kiểm định!",
+          ),
+        );
     },
-    [orders],
+    [orders, isAdmin],
   ); // Các biến phụ thuộc của hàm này
 const handleUpdateDongGoi = (order, field, value) => {
   const val = Number(value) || 0;
@@ -447,15 +445,6 @@ const handleUpdateDongGoi = (order, field, value) => {
 };
   const handleLogout = () =>
     signOut(auth).then(() => message.info("Đã đăng xuất!"));
-
-  const handleEnablePush = async () => {
-    try {
-      await requestPushPermission(user.uid);
-      message.success("Đã bật thông báo đẩy trên thiết bị này.");
-    } catch (error) {
-      message.error(error.message || "Không thể bật thông báo đẩy.");
-    }
-  };
 
   const handleDeliverOrder = (fbKey) => {
     const order = orders.find((o) => o.fbKey === fbKey);
@@ -785,6 +774,7 @@ const stats = useMemo(() => {
   const tableColumns = useOrderTableColumns(
     handleUpdateGroupRecord,
     handleUpdateRecord,
+    isAdmin,
   );
 
   if (!user && !loading) {
@@ -798,7 +788,6 @@ const stats = useMemo(() => {
         onDeleteNoti={deleteNoti}
         user={user}
         onLogout={handleLogout}
-        onEnablePush={handleEnablePush}
       />
 
       <Tabs

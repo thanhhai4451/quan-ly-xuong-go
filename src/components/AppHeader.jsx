@@ -15,7 +15,6 @@ import {
   PlusOutlined,
   ClockCircleOutlined,
   AlertOutlined,
-  BellOutlined,
   LogoutOutlined,
 } from "@ant-design/icons";
 import { ref, remove } from "firebase/database";
@@ -29,7 +28,6 @@ const AppHeader = ({
   onDeleteNoti,
   user,
   onLogout,
-  onEnablePush,
 }) => {
   return (
     <Card
@@ -49,9 +47,6 @@ const AppHeader = ({
         </Col>
         <Col>
           <Space size="large">
-            <Button icon={<BellOutlined />} onClick={onEnablePush}>
-              Bật thông báo
-            </Button>
             <Popover
               placement="bottomRight"
               trigger="click"

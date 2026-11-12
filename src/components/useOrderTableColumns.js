@@ -20,6 +20,7 @@ const { Text } = Typography;
 export function useOrderTableColumns(
   handleUpdateGroupRecord,
   handleUpdateRecord,
+  isAdmin,
 ) {
   return useMemo(
     () => (fbKey, orderData, order) => {
@@ -185,7 +186,11 @@ export function useOrderTableColumns(
             // 3. Số lượng đã gửi, đang chờ tổ kế tiếp xác nhận
             const nextTeam = getNextProductionStep(step, record.skipSteps || []);
             const waitingConfirmVal = Number(record.waitingConfirm?.[nextTeam]) || 0;
-            const displayedVal = pendingVal > 0 ? pendingVal : null;
+            const displayedVal = isAdmin
+              ? confirmedVal
+              : pendingVal > 0
+                ? pendingVal
+                : null;
 
             // Số lượng còn thiếu dựa trên TIẾN ĐỘ CHÍNH THỨC (Chưa tính số đang treo)
             const remaining = targetNeed - confirmedVal;
@@ -214,12 +219,17 @@ export function useOrderTableColumns(
                 <InputNumber
                   min={0}
                   value={displayedVal}
-                  placeholder="Nhập thêm SL"
+                  placeholder={isAdmin ? "Sửa SL đã xác nhận" : "Nhập thêm SL"}
+                  title={
+                    isAdmin
+                      ? "Admin cập nhật trực tiếp số lượng đã xác nhận, không cần bàn giao"
+                      : undefined
+                  }
                   onBlur={(e) => {
                     const rawValue = String(e.target.value ?? "").replace(/\./g, "");
                     const newVal = rawValue === "" ? 0 : Number(rawValue);
 
-                    if (newVal !== (pendingVal || 0)) {
+                    if (newVal !== (isAdmin ? confirmedVal : pendingVal || 0)) {
                       if (record.groupName && isGroupStep) {
                         handleUpdateGroupRecord(fbKey, record.groupName, step, newVal);
                       } else {
@@ -292,6 +302,6 @@ export function useOrderTableColumns(
         })),
       ];
     },
-    [handleUpdateGroupRecord, handleUpdateRecord],
+    [handleUpdateGroupRecord, handleUpdateRecord, isAdmin],
   );
 }

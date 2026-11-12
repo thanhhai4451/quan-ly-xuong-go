@@ -3,11 +3,29 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import { registerMessagingServiceWorker } from './firebaseMessaging';
 
-registerMessagingServiceWorker().catch((error) => {
-  console.error('Không thể đăng ký Firebase Messaging service worker:', error);
-});
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker
+    .getRegistrations()
+    .then((registrations) =>
+      Promise.all(
+        registrations
+          .filter((registration) =>
+            [
+              registration.active,
+              registration.waiting,
+              registration.installing,
+            ].some((worker) =>
+              worker?.scriptURL.endsWith('/firebase-messaging-sw.js'),
+            ),
+          )
+          .map((registration) => registration.unregister()),
+      ),
+    )
+    .catch((error) => {
+      console.error('Không thể gỡ Firebase Messaging service worker:', error);
+    });
+}
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

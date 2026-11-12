@@ -4,30 +4,9 @@
 
 Chạy `npm install` để cài các phụ thuộc, sau đó dùng `npm start` để chạy ở chế độ phát triển hoặc `npm run build` để tạo bản production trong thư mục `build`.
 
-## PWA và thông báo đẩy
+## PWA
 
-Ứng dụng có manifest cài đặt, service worker Firebase Cloud Messaging và nút **Bật thông báo** trong thanh tiêu đề. Firebase Console cần bật Cloud Messaging và có Web Push certificates (VAPID).
-
-1. Khóa VAPID public hiện được cấu hình làm giá trị mặc định trong frontend để workflow GitHub Actions có thể build ứng dụng. Có thể ghi đè bằng `REACT_APP_FIREBASE_VAPID_KEY` trong `.env.local` khi phát triển; sao chép `.env.example` thành `.env.local` nếu cần tùy chỉnh.
-2. Cấp quyền thông báo trên HTTPS (hoặc `localhost`); trên iOS cần iOS 16.4 trở lên và thêm ứng dụng vào Màn hình chính trước khi bật Web Push.
-3. Khi người dùng cho phép, token được lưu tại `fcmTokens/{uid}/{tokenKey}` trong Realtime Database. Cấu hình Database Rules để chỉ người dùng đã đăng nhập đọc/ghi nhánh UID của chính mình, ví dụ:
-
-```json
-{
-  "rules": {
-    "fcmTokens": {
-      "$uid": {
-        ".read": "auth != null && auth.uid === $uid",
-        ".write": "auth != null && auth.uid === $uid"
-      }
-    }
-  }
-}
-```
-
-4. Các thông báo sự kiện được gửi tự động bởi Cloud Functions trong `functions/index.js`: tạo đơn mới gửi tới mọi thiết bị đã đăng ký; khi Tổ Phôi bàn giao cho Tổ Định Hình thì gửi tới các tài khoản trong tổ; khi đơn đóng gói đủ và chuyển sang chờ giao thì gửi tới mọi thiết bị đã đăng ký. Tài khoản tổ Định Hình được xác định bằng email Firebase Authentication được cấu hình trong hàm. Để triển khai Cloud Functions, dự án Firebase cần bật billing plan Blaze; sau khi push mã lên `main`, workflow deploy sẽ triển khai cả Hosting và Functions. Tài khoản đã bật thông báo trước đây vẫn nhận đơn mới/chờ giao, nhưng cần bấm **Bật thông báo** lại nếu thiết bị chưa đăng ký hoặc cần cập nhật token.
-
-Nếu đổi Firebase project, cập nhật cấu hình đồng bộ trong `src/firebase.js` và `public/firebase-messaging-sw.js`. Web Push không được cung cấp trên mọi trình duyệt/nền tảng. Frontend kiểm tra hỗ trợ trước khi lấy token và hiển thị lỗi nếu VAPID, quyền thông báo hoặc cấu hình Firebase chưa sẵn sàng.
+Ứng dụng có web app manifest, biểu tượng cài đặt và metadata hỗ trợ chế độ standalone trên thiết bị di động. Thông báo chỉ hiển thị trong ứng dụng khi đang mở; không có thông báo đẩy gửi tới điện thoại.
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
