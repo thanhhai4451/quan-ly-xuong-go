@@ -27,6 +27,9 @@ const OrderForm = ({ form, initialData, onFinish, isEditing, onCopy }) => {
   useEffect(() => {
     if (initialData) {
       let formData = { ...initialData };
+      const orderDate = initialData.ngayDat || (isEditing ? initialData.createdAt : null);
+      formData.ngayDat = orderDate ? dayjs(orderDate) : (isEditing ? null : dayjs());
+      formData.soKhoi = Number(initialData.soKhoi) || 0;
       if (initialData.chiTiet) {
         formData.deadlineDongGoi = initialData.deadlineDongGoi ? dayjs(initialData.deadlineDongGoi) : null;
         formData.ngayGiao = initialData.ngayGiao ? dayjs(initialData.ngayGiao, 'DD/MM/YYYY') : null;
@@ -52,9 +55,9 @@ const OrderForm = ({ form, initialData, onFinish, isEditing, onCopy }) => {
       form.setFieldsValue(formData);
     } else {
       form.resetFields();
-      form.setFieldsValue({ items: [{}] });
+      form.setFieldsValue({ items: [{}], ngayDat: dayjs(), soKhoi: null });
     }
-  }, [initialData, form]);
+  }, [initialData, form, isEditing]);
 
   // Xử lý logic hoán đổi vị trí khi Sư Phụ thả linh kiện
   const handleDragEnd = (result, move) => {
@@ -124,12 +127,24 @@ const OrderForm = ({ form, initialData, onFinish, isEditing, onCopy }) => {
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
         </Col>
-        <Col span={5}>
+      </Row>
+      <Row gutter={16}>
+        <Col span={6}>
+          <Form.Item name="soKhoi" label="Số khối gỗ (m³)" rules={[{ required: true, message: 'Vui lòng nhập số khối gỗ' }]}>
+            <InputNumber min={0} step={0.001} precision={3} placeholder="Tự nhập số khối" style={{ width: '100%' }} />
+          </Form.Item>
+        </Col>
+        <Col span={6}>
+          <Form.Item name="ngayDat" label="Ngày nhập đơn" rules={[{ required: true, message: 'Vui lòng chọn ngày nhập đơn' }]}>
+            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+          </Form.Item>
+        </Col>
+        <Col span={6}>
           <Form.Item name="deadlineDongGoi" label="Hạn đóng gói" rules={[{ required: true }]}>
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
         </Col>
-        <Col span={5}>
+        <Col span={6}>
           <Form.Item name="ngayGiao" label="Ngày giao khách" rules={[{ required: true }]}>
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>

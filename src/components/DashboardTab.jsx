@@ -14,7 +14,7 @@ import customParseFormat from 'dayjs/plugin/customParseFormat';
 import * as XLSX from 'xlsx';
 
 import { calculateOrderProgress, calculateStepsProgress } from '../utils/progress';
-import { calculateAdvancedMetrics } from '../utils/dashboard';
+import { calculateAdvancedMetrics, calculateMonthlyCustomerVolumes } from '../utils/dashboard';
 import DashboardCharts from './DashboardCharts';
 
 dayjs.extend(customParseFormat);
@@ -75,6 +75,7 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [dateRange, setDateRange] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(() => dayjs());
   const [refreshInterval, setRefreshInterval] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedOrderGroup, setSelectedOrderGroup] = useState(null);
@@ -208,6 +209,21 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
     };
   }, [filteredGroupedOrders, filteredRawOrders, khoDu]);
 
+  const monthlyVolumeOrders = useMemo(
+    () => groupedOrders.flatMap((group) => group.items.map((order) => ({
+      ...order,
+      khachHang: group.khachHang,
+      daGiao: group.daGiao,
+      percent: group.percent,
+    }))),
+    [groupedOrders]
+  );
+
+  const monthlyCustomerVolumes = useMemo(
+    () => calculateMonthlyCustomerVolumes(monthlyVolumeOrders, selectedMonth),
+    [monthlyVolumeOrders, selectedMonth]
+  );
+
   // Dữ liệu cho các Biểu đồ
   const chartData = useMemo(() => {
     let dailyOutput = Object.keys(metrics.dailyMap || {})
@@ -264,6 +280,7 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
 
     return {
       dailyOutput,
+      monthlyCustomerVolumes,
       dailyProgress: dailyOutput.map(d => {
         const calculatedProgress = Math.round(d.sanLuong / 10); 
         const safeProgress = Math.max(0, Math.min(100, calculatedProgress));
@@ -294,7 +311,7 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
         { subject: 'Đóng gói', A: 95 },
       ]
     };
-  }, [metrics, dateRange]);
+  }, [metrics, dateRange, monthlyCustomerVolumes]);
 
   const dangLamList = filteredGroupedOrders.filter(o => !o.daGiao && o.percent < 100);
 
@@ -325,6 +342,17 @@ const DashboardTab = ({ orders = [], khoDu = {} }) => {
                 { value: 'COMPLETED', label: 'Đã hoàn thành' },
                 { value: 'OVERDUE', label: 'Cảnh báo trễ hạn' },
               ]}
+            />
+
+            <DatePicker
+              picker="month"
+              value={selectedMonth}
+              onChange={(month) => setSelectedMonth(month || dayjs())}
+              format="MM/YYYY"
+              placeholder="Tháng thống kê"
+              style={{ width: 150 }}
+              size="large"
+              allowClear={false}
             />
 
             <DatePicker.RangePicker 

@@ -147,6 +147,9 @@ const OrderList = ({
               <Tag color="blue" style={{ borderRadius: "10px", fontWeight: 600, fontSize: "13px", padding: "2px 10px" }}>
                 {totalSp} sản phẩm
               </Tag>
+              <Tag color="green" style={{ borderRadius: "10px", fontWeight: 600, fontSize: "13px", padding: "2px 10px" }}>
+                {group.orders.reduce((sum, order) => sum + (Number(order.soKhoi) || 0), 0).toLocaleString("vi-VN", { maximumFractionDigits: 3 })} m³
+              </Tag>
               <span className="order-list__customer" style={{ color: "#595959", fontSize: "14px" }}>
                 <UserOutlined style={{ color: "#8c8c8c" }} />
                 <Text type="secondary">Khách:</Text>

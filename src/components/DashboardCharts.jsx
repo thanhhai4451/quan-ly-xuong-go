@@ -1,5 +1,5 @@
 import React from 'react';
-import { Row, Col, Card, Statistic } from 'antd';
+import { Row, Col, Card, Statistic, Empty } from 'antd';
 import { ArrowUpOutlined } from '@ant-design/icons';
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -29,6 +29,7 @@ const chartContainer = {
 const DashboardCharts = ({ chartData }) => {
   // === Tính số liệu Thống kê Tổng quan ===
   const tongSanLuong = chartData.dailyOutput?.reduce((s, i) => s + (i.sanLuong || 0), 0) || 0;
+  const tongSoKhoiKhachHang = chartData.monthlyCustomerVolumes?.reduce((sum, item) => sum + item.soKhoi, 0) || 0;
   const donDungHan = chartData.onTimePie?.[0]?.value || 0;
   const donTreHan = chartData.onTimePie?.[1]?.value || 0;
   const tyLeHoanThanh = donDungHan + donTreHan > 0 
@@ -296,37 +297,59 @@ const DashboardCharts = ({ chartData }) => {
 
         <Col xs={24} md={12}>
           <Card
-            title={<span style={cardTitleStyle}>🍩 Tỷ Lệ Đơn Hàng Đúng Hạn</span>}
+            title={<span style={cardTitleStyle}>🍩 Tỷ Lệ Khối Gỗ Theo Khách Hàng</span>}
+            extra={<span style={{ color: '#595959' }}>Tổng: {tongSoKhoiKhachHang.toLocaleString('vi-VN')} m³</span>}
             bordered={false}
             style={cardStyle}
           >
             <div style={{ width: '100%', height: 260, padding: '8px 0' }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={chartData.onTimePie || []}
-                    dataKey="value"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
-                    labelLine={false}
-                  >
-                    <Cell fill="#52c41a" />
-                    <Cell fill="#ff4d4f" />
-                  </Pie>
-                  <Tooltip
-                    formatter={(value, name) => [`${value} đơn`, name]}
-                    contentStyle={{
-                      borderRadius: '10px',
-                      border: 'none',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
-                    }}
-                  />
-                  <Legend iconType="circle" wrapperStyle={{ fontSize: '13px' }} />
-                </PieChart>
-              </ResponsiveContainer>
+              {chartData.monthlyCustomerVolumes?.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={chartData.monthlyCustomerVolumes}
+                      dataKey="soKhoi"
+                      nameKey="khachHang"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      label={({ percent }) => `${(percent * 100).toFixed(0)}%`}
+                      labelLine={false}
+                    >
+                      {chartData.monthlyCustomerVolumes.map((_, i) => (
+                        <Cell key={`volume-cell-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value, name) => [
+                        `${Number(value).toLocaleString('vi-VN')} m³`,
+                        name,
+                      ]}
+                      contentStyle={{
+                        borderRadius: '10px',
+                        border: 'none',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+                      }}
+                    />
+                    <Legend
+                      iconType="circle"
+                      wrapperStyle={{ fontSize: '13px' }}
+                      formatter={(customer) => {
+                        const volume = chartData.monthlyCustomerVolumes.find(
+                          (item) => item.khachHang === customer
+                        )?.soKhoi || 0;
+                        return `${customer}: ${volume.toLocaleString('vi-VN')} m³`;
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <Empty
+                  description="Không có đơn đang sản xuất có số khối trong tháng này"
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                />
+              )}
             </div>
           </Card>
         </Col>

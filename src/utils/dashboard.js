@@ -1,4 +1,40 @@
 import dayjs from 'dayjs';
+import customParseFormat from 'dayjs/plugin/customParseFormat';
+
+dayjs.extend(customParseFormat);
+
+const getOrderDate = (order) => {
+  const value = order.ngayDat || order.createdAt;
+  if (!value) return null;
+
+  const parsedDate = dayjs(value);
+  if (parsedDate.isValid()) return parsedDate;
+
+  const legacyDate = dayjs(value, 'DD/MM/YYYY', true);
+  return legacyDate.isValid() ? legacyDate : null;
+};
+
+export const calculateMonthlyCustomerVolumes = (orders = [], selectedMonth = dayjs()) => {
+  if (!selectedMonth || !dayjs(selectedMonth).isValid()) return [];
+
+  const volumesByCustomer = {};
+  orders.forEach((order) => {
+    if (order.daGiao || Number(order.percent) >= 100) return;
+
+    const orderDate = getOrderDate(order);
+    if (!orderDate || !orderDate.isSame(selectedMonth, 'month')) return;
+
+    const volume = Number(order.soKhoi);
+    if (!Number.isFinite(volume) || volume <= 0) return;
+
+    const customer = order.khachHang || order.tenKhachHang || order.khach || 'Khách lẻ';
+    volumesByCustomer[customer] = Number(((volumesByCustomer[customer] || 0) + volume).toFixed(3));
+  });
+
+  return Object.entries(volumesByCustomer)
+    .map(([khachHang, soKhoi]) => ({ khachHang, soKhoi }))
+    .sort((a, b) => b.soKhoi - a.soKhoi);
+};
 
 /**
  * Thuật toán tính toán KPI ERP & Dự báo sản lượng MES

@@ -580,6 +580,8 @@ const handleUpdateDongGoi = (order, field, value) => {
         tenKhachHang: values.tenKhachHang || editingOrder.tenKhachHang || "",
         maDon: values.maDon || editingOrder.maDon || "",
         tongSoBo: Number(values.tongSoBo),
+        soKhoi: Number(values.soKhoi) || 0,
+        ngayDat: values.ngayDat?.format?.("YYYY-MM-DD") || editingOrder.ngayDat || "",
         deadlineDongGoi: values.deadlineDongGoi?.format?.("YYYY-MM-DD") || "",
         ngayGiao: values.ngayGiao?.format?.("DD/MM/YYYY") || "",
         hinhAnh: values.hinhAnh || editingOrder.hinhAnh || "",
@@ -642,6 +644,8 @@ const handleUpdateDongGoi = (order, field, value) => {
         tenKhachHang: values.tenKhachHang || "",
         maDon: values.maDon || "",
         tongSoBo: Number(values.tongSoBo) || 0,
+        soKhoi: Number(values.soKhoi) || 0,
+        ngayDat: values.ngayDat ? values.ngayDat.format("YYYY-MM-DD") : "",
         soLuongDongGoi: 0,
         ngayGiao: values.ngayGiao ? values.ngayGiao.format("DD/MM/YYYY") : "",
         deadlineDongGoi: values.deadlineDongGoi
